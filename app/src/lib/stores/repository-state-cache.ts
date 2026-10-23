@@ -26,6 +26,7 @@ import { sendNonFatalException } from '../helpers/non-fatal-exception'
 import { IStatsStore } from '../stats'
 import { RepoRulesInfo } from '../../models/repo-rules'
 import { WorktreeEntry } from '../../models/worktree'
+import { getInitialCommitGraphState } from '../commit-graph/state'
 
 export class RepositoryStateCache {
   private readonly repositoryState = new Map<string, IRepositoryState>()
@@ -420,6 +421,7 @@ function getInitialRepositoryState(): IRepositoryState {
       recentBranches: new Array<Branch>(),
       defaultBranch: null,
     },
+    commitGraphState: getInitialCommitGraphState(),
     pullRequestState: null,
     commitAuthor: null,
     commitLookup: new Map<string, Commit>(),

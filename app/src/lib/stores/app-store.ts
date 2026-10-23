@@ -180,6 +180,12 @@ import {
   launchExternalEditor,
 } from '../editors'
 import { assertNever, fatalError, forceUnwrap } from '../fatal-error'
+import { CommitGraphScope, ICommitGraphState } from '../../models/commit-graph'
+import {
+  CommitGraphBatchSize,
+  getCommitGraphRefsSignature,
+  setCommitGraphScopePreference,
+} from '../commit-graph/state'
 
 import { formatCommitMessage } from '../format-commit-message'
 import {
@@ -620,6 +626,9 @@ export class AppStore extends TypedBaseStore<IAppState> {
     number,
     ILocalRepositoryState
   >()
+
+  /** The id of the most recent commit graph load, keyed by repository hash. */
+  private readonly commitGraphRequestIds = new Map<string, number>()
 
   /** Map from shortcut (e.g., :+1:) to on disk URL. */
   private emoji = new Map<string, Emoji>()
@@ -1999,6 +2008,118 @@ export class AppStore extends TypedBaseStore<IAppState> {
   }
 
   /** This shouldn't be called directly. See `Dispatcher`. */
+  public async _setCommitGraphScope(
+    repository: Repository,
+    scope: CommitGraphScope
+  ): Promise<void> {
+    setCommitGraphScopePreference(scope)
+    this.updateCommitGraphState(repository, { scope, commitSHAs: [] })
+    this.emitUpdate()
+    await this.refreshCommitGraphSection(repository, true)
+  }
+
+  /** This shouldn't be called directly. See `Dispatcher`. */
+  public async _loadNextCommitGraphBatch(repository: Repository) {
+    const { commitGraphState } = this.repositoryStateCache.get(repository)
+    const { isLoading, hasMore, scope, commitSHAs } = commitGraphState
+
+    if (isLoading || !hasMore) {
+      return
+    }
+
+    await this.loadCommitGraph(repository, scope, commitSHAs.length, {
+      commitSHAs,
+      refsSignature: commitGraphState.refsSignature,
+    })
+  }
+
+  /**
+   * Reload the commit graph if the refs it depends on changed since it was
+   * last loaded, or unconditionally when `force` is true.
+   */
+  private async refreshCommitGraphSection(
+    repository: Repository,
+    force: boolean = false
+  ): Promise<void> {
+    const { commitGraphState, branchesState, localTags } =
+      this.repositoryStateCache.get(repository)
+    const { scope, commitSHAs } = commitGraphState
+    const refsSignature = getCommitGraphRefsSignature(
+      scope,
+      branchesState.tip,
+      branchesState.allBranches,
+      localTags
+    )
+
+    if (
+      !force &&
+      commitSHAs.length > 0 &&
+      commitGraphState.refsSignature === refsSignature
+    ) {
+      return
+    }
+
+    // Reload at least as many commits as currently displayed so that the
+    // scroll position is preserved.
+    const limit = Math.max(commitSHAs.length, CommitGraphBatchSize)
+    await this.loadCommitGraph(repository, scope, 0, {
+      commitSHAs: [],
+      refsSignature,
+      limit,
+    })
+  }
+
+  /**
+   * Load commits for the graph and append them after `base.commitSHAs`.
+   *
+   * Only the most recent request for a repository is applied, so that a slow
+   * load can't overwrite the result of a newer one (e.g. after a scope change).
+   */
+  private async loadCommitGraph(
+    repository: Repository,
+    scope: CommitGraphScope,
+    skip: number,
+    base: {
+      readonly commitSHAs: ReadonlyArray<string>
+      readonly refsSignature: string | null
+      readonly limit?: number
+    }
+  ) {
+    const requestId = (this.commitGraphRequestIds.get(repository.hash) ?? 0) + 1
+    this.commitGraphRequestIds.set(repository.hash, requestId)
+
+    this.updateCommitGraphState(repository, { isLoading: true })
+    this.emitUpdate()
+
+    const limit = base.limit ?? CommitGraphBatchSize
+    const gitStore = this.gitStoreCache.get(repository)
+    const newSHAs = await gitStore.loadCommitGraphBatch(scope, limit, skip)
+
+    if (this.commitGraphRequestIds.get(repository.hash) !== requestId) {
+      return
+    }
+
+    const commitSHAs = [...base.commitSHAs, ...(newSHAs ?? [])]
+    this.updateCommitGraphState(repository, {
+      commitSHAs,
+      isLoading: false,
+      hasMore: newSHAs !== null && newSHAs.length >= limit,
+      refsSignature: base.refsSignature,
+    })
+    this.updateOrSelectFirstCommit(repository, commitSHAs)
+    this.emitUpdate()
+  }
+
+  private updateCommitGraphState(
+    repository: Repository,
+    values: Partial<ICommitGraphState>
+  ) {
+    this.repositoryStateCache.update(repository, state => ({
+      commitGraphState: { ...state.commitGraphState, ...values },
+    }))
+  }
+
+  /** This shouldn't be called directly. See `Dispatcher`. */
   public async _loadChangedFilesForCurrentSelection(
     repository: Repository
   ): Promise<void> {
@@ -3372,6 +3493,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
         includingStatus: true,
         clearPartialState: false,
       })
+    } else if (selectedSection === RepositorySectionTab.Graph) {
+      await this.refreshCommitGraphSection(repository)
     }
 
     if (forceButtonFocus) {
@@ -4122,6 +4245,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
         includingStatus: false,
         clearPartialState: false,
       })
+    } else if (section === RepositorySectionTab.Graph) {
+      refreshSectionPromise = this.refreshCommitGraphSection(repository)
     } else {
       return assertNever(section, `Unknown section: ${section}`)
     }

@@ -69,6 +69,7 @@ import { IAPIRepoRuleset } from './api'
 import { ICustomIntegration } from './custom-integration'
 import { Emoji } from './emoji'
 import { IUpdateState } from '../ui/lib/update-store'
+import { ICommitGraphState } from '../models/commit-graph'
 
 export enum SelectionType {
   Repository,
@@ -475,6 +476,7 @@ export type Foldout =
 export enum RepositorySectionTab {
   Changes,
   History,
+  Graph,
 }
 
 /**
@@ -550,6 +552,7 @@ export interface IRepositoryState {
   readonly commitSelection: ICommitSelection
   readonly changesState: IChangesState
   readonly compareState: ICompareState
+  readonly commitGraphState: ICommitGraphState
   readonly selectedSection: RepositorySectionTab
 
   /**

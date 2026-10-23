@@ -99,6 +99,8 @@ import { getDefaultBranch } from '../helpers/default-branch'
 import { rm, stat } from 'fs/promises'
 import { findForkedRemotesToPrune } from './helpers/find-forked-remotes-to-prune'
 import { findDefaultBranch } from '../find-default-branch'
+import { CommitGraphScope } from '../../models/commit-graph'
+import { getCommitGraphCommits } from '../git/commit-graph'
 
 /** The number of commits to load from history per batch. */
 const CommitBatchSize = 100
@@ -230,6 +232,24 @@ export class GitStore extends BaseStore {
     )
 
     this.requestsInFight.delete(requestKey)
+    if (!commits) {
+      return null
+    }
+
+    this.storeCommits(commits)
+    return commits.map(c => c.sha)
+  }
+
+  /** Load a batch of commits to display in the commit graph. */
+  public async loadCommitGraphBatch(
+    scope: CommitGraphScope,
+    limit: number,
+    skip: number
+  ) {
+    const commits = await this.performFailableOperation(() =>
+      getCommitGraphCommits(this.repository, scope, limit, skip)
+    )
+
     if (!commits) {
       return null
     }

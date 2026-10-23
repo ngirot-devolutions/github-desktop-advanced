@@ -132,6 +132,7 @@ import { ICustomIntegration } from '../../lib/custom-integration'
 import { isAbsolute } from 'path'
 import { CLIAction } from '../../lib/cli-action'
 import { BypassReasonType } from '../secret-scanning/bypass-push-protection-dialog'
+import { CommitGraphScope } from '../../models/commit-graph'
 import {
   IConflictResolutionProgress,
   IFileResolution,
@@ -247,6 +248,19 @@ export class Dispatcher {
   /** Load the next batch of history for the repository. */
   public loadNextCommitBatch(repository: Repository): Promise<void> {
     return this.appStore._loadNextCommitBatch(repository)
+  }
+
+  /** Load the next batch of commits displayed in the commit graph. */
+  public loadNextCommitGraphBatch(repository: Repository): Promise<void> {
+    return this.appStore._loadNextCommitGraphBatch(repository)
+  }
+
+  /** Change which refs are included in the commit graph and reload it. */
+  public setCommitGraphScope(
+    repository: Repository,
+    scope: CommitGraphScope
+  ): Promise<void> {
+    return this.appStore._setCommitGraphScope(repository, scope)
   }
 
   /** Load the changed files for the current history selection. */

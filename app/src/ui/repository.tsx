@@ -36,6 +36,8 @@ import { PullRequestSuggestedNextAction } from '../models/pull-request'
 import { clamp } from '../lib/clamp'
 import { Emoji } from '../lib/emoji'
 import { PopupType } from '../models/popup'
+import { CommitGraphView } from './commit-graph'
+import { enableCommitGraph } from '../lib/feature-flag'
 
 interface IRepositoryViewProps {
   readonly repository: Repository
@@ -151,6 +153,7 @@ interface IRepositoryViewState {
 const enum Tab {
   Changes = 0,
   History = 1,
+  Graph = 2,
 }
 
 export class RepositoryView extends React.Component<
@@ -215,9 +218,12 @@ export class RepositoryView extends React.Component<
   }
 
   private renderTabs(): JSX.Element {
+    const { selectedSection } = this.props.state
     const selectedTab =
-      this.props.state.selectedSection === RepositorySectionTab.Changes
+      selectedSection === RepositorySectionTab.Changes
         ? Tab.Changes
+        : selectedSection === RepositorySectionTab.Graph
+        ? Tab.Graph
         : Tab.History
 
     return (
@@ -230,6 +236,12 @@ export class RepositoryView extends React.Component<
         <div className="with-indicator" id="history-tab">
           <span>History</span>
         </div>
+
+        {enableCommitGraph() && (
+          <div className="with-indicator" id="graph-tab">
+            <span>Graph</span>
+          </div>
+        )}
       </TabBar>
     )
   }
@@ -389,7 +401,10 @@ export class RepositoryView extends React.Component<
 
     if (selectedSection === RepositorySectionTab.Changes) {
       return this.renderChangesSidebar()
-    } else if (selectedSection === RepositorySectionTab.History) {
+    } else if (
+      selectedSection === RepositorySectionTab.History ||
+      selectedSection === RepositorySectionTab.Graph
+    ) {
       return this.renderCompareSidebar()
     } else {
       return assertNever(selectedSection, 'Unknown repository section')
@@ -635,14 +650,48 @@ export class RepositoryView extends React.Component<
     const selectedSection = this.props.state.selectedSection
     if (selectedSection === RepositorySectionTab.Changes) {
       return this.renderContentForChanges()
-    } else if (selectedSection === RepositorySectionTab.History) {
+    } else if (
+      selectedSection === RepositorySectionTab.History ||
+      selectedSection === RepositorySectionTab.Graph
+    ) {
       return this.renderContentForHistory()
     } else {
       return assertNever(selectedSection, 'Unknown repository section')
     }
   }
 
+  private renderCommitGraph(): JSX.Element {
+    const { state } = this.props
+
+    return (
+      <CommitGraphView
+        repository={this.props.repository}
+        dispatcher={this.props.dispatcher}
+        graphState={state.commitGraphState}
+        commitLookup={state.commitLookup}
+        branches={state.branchesState.allBranches}
+        localTags={state.localTags}
+        tip={state.branchesState.tip}
+        selectedSHAs={state.commitSelection.shas}
+        emoji={this.props.emoji}
+        preferAbsoluteDates={this.props.preferAbsoluteDates}
+        tabs={this.renderTabs()}
+        tabsWidth={this.props.sidebarWidth.value}
+        details={this.renderContentForHistory()}
+      />
+    )
+  }
+
   public render() {
+    if (this.props.state.selectedSection === RepositorySectionTab.Graph) {
+      return (
+        <UiView id="repository" className="commit-graph-mode">
+          {this.renderCommitGraph()}
+          {this.maybeRenderTutorialPanel()}
+        </UiView>
+      )
+    }
+
     return (
       <UiView id="repository">
         {this.renderSidebar()}
@@ -718,6 +767,8 @@ export class RepositoryView extends React.Component<
     const section =
       tab === Tab.History
         ? RepositorySectionTab.History
+        : tab === Tab.Graph
+        ? RepositorySectionTab.Graph
         : RepositorySectionTab.Changes
 
     this.props.dispatcher.changeRepositorySection(

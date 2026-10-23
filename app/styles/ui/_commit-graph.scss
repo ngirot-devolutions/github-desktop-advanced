@@ -1,0 +1,245 @@
+// Full-width commit graph view (ADV-01).
+
+:root {
+  --commit-graph-lane-0: #0969da;
+  --commit-graph-lane-1: #cf222e;
+  --commit-graph-lane-2: #1a7f37;
+  --commit-graph-lane-3: #8250df;
+  --commit-graph-lane-4: #bc4c00;
+  --commit-graph-lane-5: #1b7c83;
+  --commit-graph-lane-6: #bf3989;
+  --commit-graph-lane-7: #9a6700;
+}
+
+body.theme-dark {
+  --commit-graph-lane-0: #4493f8;
+  --commit-graph-lane-1: #f85149;
+  --commit-graph-lane-2: #3fb950;
+  --commit-graph-lane-3: #ab7df8;
+  --commit-graph-lane-4: #db6d28;
+  --commit-graph-lane-5: #39c5cf;
+  --commit-graph-lane-6: #db61a2;
+  --commit-graph-lane-7: #d29922;
+}
+
+@for $i from 0 through 7 {
+  .lane-color-#{$i} {
+    --commit-graph-lane-color: var(--commit-graph-lane-#{$i});
+  }
+}
+
+#repository.commit-graph-mode {
+  flex-direction: column;
+}
+
+.commit-graph-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+
+  .commit-graph-header {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: stretch;
+    border-bottom: var(--base-border);
+
+    .commit-graph-tabs {
+      flex: 0 0 auto;
+      border-right: var(--base-border);
+    }
+
+    .commit-graph-toolbar {
+      display: flex;
+      flex: 1 1 auto;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 0 var(--spacing);
+    }
+
+    .commit-graph-scope {
+      flex-direction: row;
+      flex-grow: 0;
+      align-items: center;
+      gap: var(--spacing-half);
+
+      label {
+        flex: 0 0 auto;
+        overflow: visible;
+        margin: 0;
+      }
+
+      select {
+        width: auto;
+        min-width: 140px;
+        padding: 0 var(--spacing-half);
+      }
+    }
+  }
+
+  .commit-graph-list {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 55%;
+    min-height: 120px;
+    border-bottom: var(--base-border);
+  }
+
+  .commit-graph-details {
+    display: flex;
+    flex: 1 1 45%;
+    min-height: 160px;
+  }
+
+  .commit-graph-empty {
+    padding: var(--spacing-double);
+    color: var(--text-secondary-color);
+    text-align: center;
+  }
+
+  .commit-graph-row {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    width: 100%;
+    font-size: var(--font-size);
+  }
+
+  .commit-graph-column-headers {
+    flex: 0 0 auto;
+    height: 24px;
+    border-bottom: var(--base-border);
+    color: var(--text-secondary-color);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+  }
+
+  .commit-graph-cell {
+    flex: 0 0 auto;
+    min-width: 0;
+    padding: 0 var(--spacing-half);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+
+    &.graph {
+      padding: 0;
+      overflow: hidden;
+      height: 100%;
+      display: flex;
+      align-items: center;
+    }
+
+    &.description {
+      flex: 1 1 auto;
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-half);
+
+      .summary {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .empty-summary {
+        font-style: italic;
+        color: var(--text-secondary-color);
+      }
+    }
+
+    &.author {
+      width: 160px;
+    }
+
+    &.date {
+      width: 120px;
+      color: var(--text-secondary-color);
+    }
+
+    &.sha {
+      width: 92px;
+      font-family: var(--font-family-monospace);
+      color: var(--text-secondary-color);
+    }
+  }
+
+  .commit-graph-lanes {
+    flex: 0 0 auto;
+    overflow: hidden;
+  }
+
+  .commit-graph-edge {
+    fill: none;
+    stroke: var(--commit-graph-lane-color);
+    stroke-width: 2;
+  }
+
+  .commit-graph-node {
+    fill: var(--commit-graph-lane-color);
+    stroke: var(--background-color);
+    stroke-width: 1.5;
+
+    &.merge {
+      fill: var(--background-color);
+      stroke: var(--commit-graph-lane-color);
+      stroke-width: 2;
+    }
+
+    &.head {
+      stroke: var(--text-color);
+      stroke-width: 2;
+    }
+  }
+
+  .commit-graph-refs {
+    display: flex;
+    flex: 0 1 auto;
+    gap: var(--spacing-third);
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .commit-graph-ref {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 200px;
+    padding: 0 var(--spacing-half);
+    border: 1px solid var(--commit-graph-lane-color);
+    border-radius: 10px;
+    color: var(--text-color);
+    font-size: var(--font-size-sm);
+    line-height: 16px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+
+    &.head {
+      background: var(--commit-graph-lane-color);
+      color: var(--background-color);
+      font-weight: var(--font-weight-semibold);
+    }
+
+    &.remote {
+      border-style: dashed;
+    }
+
+    &.tag {
+      border-radius: 3px;
+    }
+
+    &.more {
+      border-color: var(--box-border-color);
+      color: var(--text-secondary-color);
+    }
+
+    .octicon {
+      flex: 0 0 auto;
+      width: 10px;
+      height: 10px;
+    }
+  }
+}

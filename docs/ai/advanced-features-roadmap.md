@@ -33,23 +33,35 @@ commits inaccessibles (reflog), support basique de LFS.
 
 ## Priorité 1 : très demandé
 
-### ADV-01 · Graphe de commits visuel — `todo`
+### ADV-01 · Graphe de commits visuel — `partiel`
 
 Vue de toutes les branches (locales et distantes) et des tags en même temps,
 avec les lignes de merge et des couleurs par branche. C'est le principal
 différenciateur des clients Git avancés. Desktop n'affiche qu'un historique linéaire de la
 branche courante.
 
-Pistes techniques :
+Livré (v1, derrière `enableCommitGraph()`) : onglet **Graph** pleine largeur
+(colonnes graphe | refs + message | auteur | date | SHA), détails du commit
+sélectionné en dessous, portée « All branches / Current branch » mémorisée,
+chargement par pages de 300 commits (`--date-order`), rafraîchissement
+uniquement quand les refs changent.
 
-- `app/src/lib/git/log.ts` (`getCommits`) : ajouter une variante `--all` /
-  `--topo-order`. `Commit.parentSHAs` (`app/src/models/commit.ts`) suffit pour
-  calculer les « lanes ».
-- Le calcul de layout du graphe doit être une **fonction pure** testable
-  (entrée : liste de commits, sortie : colonnes et arêtes), séparée du rendu.
-- Rendu : `app/src/ui/history/commit-list.tsx` s'appuie sur `List`
-  (`app/src/ui/lib/list/`, react-virtualized). Le graphe doit rester virtualisé
-  (dépôts de plus de 100 000 commits).
+- Données : `app/src/lib/git/commit-graph.ts`, `GitStore.loadCommitGraphBatch`,
+  `AppStore._setCommitGraphScope` / `_loadNextCommitGraphBatch`,
+  état `IRepositoryState.commitGraphState` (`app/src/models/commit-graph.ts`).
+- Layout pur et testé : `app/src/lib/commit-graph/layout.ts` (lanes stables,
+  colonnes libérées réutilisées), refs : `app/src/lib/commit-graph/refs.ts`.
+- Rendu : `app/src/ui/commit-graph/` (liste virtualisée, une ligne SVG par
+  commit), styles `app/styles/ui/_commit-graph.scss`.
+
+Reste à faire :
+
+- Largeur de la colonne graphe et hauteur du panneau de détails
+  redimensionnables (sur un gros dépôt, les tags de branches de release jamais
+  mergées ouvrent beaucoup de lanes).
+- Sélection multiple, navigation clavier vers parent / enfant.
+- Les actions sur le graphe relèvent d'ADV-02, la recherche et le filtrage
+  d'ADV-22.
 
 ### ADV-02 · Actions depuis le graphe — `todo` (dépend de ADV-01)
 

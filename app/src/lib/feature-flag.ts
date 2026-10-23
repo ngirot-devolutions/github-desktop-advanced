@@ -140,3 +140,6 @@ export const enableCopilotAppHandoff = () =>
 export function enableNewStatsEndpoint(): boolean {
   return true
 }
+
+/** Should the app show the full-width commit graph view? (ADV-01) */
+export const enableCommitGraph = () => enableBetaFeatures()
