@@ -12,6 +12,12 @@ import { Dispatcher } from '../dispatcher'
 import { List } from '../lib/list'
 import { Select } from '../lib/select'
 import { ThrottledScheduler } from '../lib/throttled-scheduler'
+import { Resizable } from '../resizable'
+import {
+  DefaultCommitGraphListWidth,
+  getCommitGraphListWidth,
+  setCommitGraphListWidth,
+} from '../../lib/commit-graph/state'
 import { CommitGraphRow } from './commit-graph-row'
 import {
   CommitGraphLaneWidth,
@@ -23,6 +29,12 @@ const MaxVisibleLanes = 20
 
 /** Load more commits when the last visible row is this close to the end. */
 const CloseToBottomThreshold = 50
+
+/** The narrowest the graph list can be resized to. */
+const MinimumListWidth = 360
+
+/** The width kept for the commit details next to the graph list. */
+const MinimumDetailsWidth = 400
 
 interface ICommitGraphViewProps {
   readonly repository: Repository
@@ -42,15 +54,23 @@ interface ICommitGraphViewProps {
   /** The width of the tabs area, matching the repository sidebar. */
   readonly tabsWidth: number
 
-  /** The details of the selected commit, rendered below the graph. */
+  /** The details of the selected commit, rendered next to the graph. */
   readonly details: JSX.Element
+}
+
+interface ICommitGraphViewState {
+  /** The width of the graph list, the details take the remaining space. */
+  readonly listWidth: number
 }
 
 /**
  * A full-width view of the repository history drawn as a graph, with the
- * details of the selected commit below it.
+ * details of the selected commit next to it.
  */
-export class CommitGraphView extends React.Component<ICommitGraphViewProps> {
+export class CommitGraphView extends React.Component<
+  ICommitGraphViewProps,
+  ICommitGraphViewState
+> {
   private readonly loadChangedFilesScheduler = new ThrottledScheduler(200)
 
   private getLayout = memoizeOne(
@@ -65,6 +85,11 @@ export class CommitGraphView extends React.Component<ICommitGraphViewProps> {
 
   private getRefs = memoizeOne(getCommitGraphRefs)
 
+  public constructor(props: ICommitGraphViewProps) {
+    super(props)
+    this.state = { listWidth: getCommitGraphListWidth() }
+  }
+
   public render() {
     return (
       <div className="commit-graph-view">
@@ -77,13 +102,37 @@ export class CommitGraphView extends React.Component<ICommitGraphViewProps> {
           </div>
           <div className="commit-graph-toolbar">{this.renderScopeSelect()}</div>
         </div>
-        <div className="commit-graph-list">
-          {this.renderColumnHeaders()}
-          {this.renderList()}
+        <div className="commit-graph-body">
+          <Resizable
+            id="commit-graph-list-pane"
+            width={this.state.listWidth}
+            minimumWidth={MinimumListWidth}
+            maximumWidth={Math.max(
+              MinimumListWidth,
+              window.innerWidth - MinimumDetailsWidth
+            )}
+            onResize={this.onListResize}
+            onReset={this.onListWidthReset}
+            description="Commit graph"
+          >
+            <div className="commit-graph-list">
+              {this.renderColumnHeaders()}
+              {this.renderList()}
+            </div>
+          </Resizable>
+          <div className="commit-graph-details">{this.props.details}</div>
         </div>
-        <div className="commit-graph-details">{this.props.details}</div>
       </div>
     )
+  }
+
+  private onListResize = (listWidth: number) => {
+    this.setState({ listWidth })
+    setCommitGraphListWidth(listWidth)
+  }
+
+  private onListWidthReset = () => {
+    this.onListResize(DefaultCommitGraphListWidth)
   }
 
   private renderScopeSelect() {

@@ -78,18 +78,27 @@ body.theme-dark {
     }
   }
 
+  .commit-graph-body {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  #commit-graph-list-pane {
+    border-right: var(--base-border);
+  }
+
   .commit-graph-list {
     display: flex;
     flex-direction: column;
-    flex: 1 1 55%;
-    min-height: 120px;
-    border-bottom: var(--base-border);
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
   .commit-graph-details {
     display: flex;
-    flex: 1 1 45%;
-    min-height: 160px;
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .commit-graph-empty {
@@ -149,11 +158,11 @@ body.theme-dark {
     }
 
     &.author {
-      width: 160px;
+      width: 130px;
     }
 
     &.date {
-      width: 120px;
+      width: 100px;
       color: var(--text-secondary-color);
     }
 

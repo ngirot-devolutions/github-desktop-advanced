@@ -1,8 +1,13 @@
 import { Branch } from '../../models/branch'
 import { CommitGraphScope, ICommitGraphState } from '../../models/commit-graph'
 import { Tip, TipState } from '../../models/tip'
+import { getNumber, setNumber } from '../local-storage'
 
 const commitGraphScopeKey = 'commit-graph-scope'
+const commitGraphListWidthKey = 'commit-graph-list-width'
+
+/** The default width of the graph list in the commit graph view. */
+export const DefaultCommitGraphListWidth = 720
 
 /** The number of commits loaded in the graph per batch. */
 export const CommitGraphBatchSize = 300
@@ -25,6 +30,16 @@ export function setCommitGraphScopePreference(scope: CommitGraphScope) {
   } catch {
     // Not being able to persist the preference is not worth bothering the user.
   }
+}
+
+/** Read the width of the graph list last chosen by the user. */
+export function getCommitGraphListWidth(): number {
+  return getNumber(commitGraphListWidthKey, DefaultCommitGraphListWidth)
+}
+
+/** Remember the width of the graph list. */
+export function setCommitGraphListWidth(width: number) {
+  setNumber(commitGraphListWidthKey, width)
 }
 
 export function getInitialCommitGraphState(): ICommitGraphState {
