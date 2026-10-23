@@ -1,4 +1,5 @@
 import * as React from 'react'
+import classNames from 'classnames'
 import { clamp } from '../../lib/clamp'
 import { AriaLiveContainer } from '../accessibility/aria-live-container'
 
@@ -80,7 +81,10 @@ export class Resizable extends React.Component<
       return
     }
 
-    const deltaX = e.clientX - this.startX
+    const deltaX =
+      this.props.handlePosition === 'left'
+        ? this.startX - e.clientX
+        : e.clientX - this.startX
     const newWidth = this.startWidth + deltaX
 
     this.updateResizeMessage(
@@ -196,7 +200,9 @@ export class Resizable extends React.Component<
     return (
       <div
         id={this.props.id}
-        className={resizableComponentClass}
+        className={classNames(resizableComponentClass, {
+          'handle-left': this.props.handlePosition === 'left',
+        })}
         style={style}
         ref={this.onResizableRef}
       >
@@ -237,6 +243,14 @@ export interface IResizableProps {
 
   /** The optional ID for the root element. */
   readonly id?: string
+
+  /**
+   * Which edge of the panel the resize handle is on. Use 'left' for panels
+   * anchored to the right of the window.
+   *
+   * @default 'right'
+   */
+  readonly handlePosition?: 'left' | 'right'
 
   /** Used to describe which resizable was updated to screen reader users */
   readonly description: string

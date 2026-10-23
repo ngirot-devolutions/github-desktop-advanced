@@ -20,4 +20,9 @@
     background: none;
     border: none;
   }
+
+  &.handle-left .resize-handle {
+    left: -3px;
+    right: auto;
+  }
 }

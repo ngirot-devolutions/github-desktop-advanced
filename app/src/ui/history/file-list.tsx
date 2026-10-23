@@ -10,6 +10,8 @@ interface IFileListProps {
   readonly selectedFile: CommittedFileChange | null
   readonly onSelectedFileChanged: (file: CommittedFileChange) => void
   readonly onRowDoubleClick: (row: number, source: ClickSource) => void
+  /** Called on every click on a file, even if it is already selected. */
+  readonly onRowClick?: (row: number, source: ClickSource) => void
   readonly availableWidth: number
   readonly onContextMenu?: (
     file: CommittedFileChange,
@@ -78,6 +80,7 @@ export class FileList extends React.Component<IFileListProps, IFileListState> {
           selectedRows={this.selectedRowsForFile()}
           onSelectedRowChanged={this.onSelectedRowChanged}
           onRowDoubleClick={this.props.onRowDoubleClick}
+          onRowClick={this.props.onRowClick}
           onRowContextMenu={this.onRowContextMenu}
           onRowKeyboardFocus={this.onRowFocus}
           onRowBlur={this.onRowBlur}

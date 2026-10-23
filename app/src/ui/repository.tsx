@@ -672,12 +672,20 @@ export class RepositoryView extends React.Component<
         branches={state.branchesState.allBranches}
         localTags={state.localTags}
         tip={state.branchesState.tip}
-        selectedSHAs={state.commitSelection.shas}
+        commitSelection={state.commitSelection}
         emoji={this.props.emoji}
+        accounts={this.props.accounts}
         preferAbsoluteDates={this.props.preferAbsoluteDates}
+        imageDiffType={this.props.imageDiffType}
+        hideWhitespaceInDiff={this.props.hideWhitespaceInHistoryDiff}
+        showSideBySideDiff={this.props.showSideBySideDiff}
         tabs={this.renderTabs()}
         tabsWidth={this.props.sidebarWidth.value}
-        details={this.renderContentForHistory()}
+        onOpenInExternalEditor={this.props.onOpenInExternalEditor}
+        onOpenBinaryFile={this.onOpenBinaryFile}
+        onOpenSubmodule={this.onOpenSubmodule}
+        onChangeImageDiffType={this.onChangeImageDiffType}
+        onDiffOptionsOpened={this.onDiffOptionsOpened}
       />
     )
   }

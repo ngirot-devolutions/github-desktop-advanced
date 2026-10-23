@@ -4,21 +4,27 @@ import { Repository } from '../../models/repository'
 import { Commit } from '../../models/commit'
 import { Branch } from '../../models/branch'
 import { Tip, TipState } from '../../models/tip'
+import { Account } from '../../models/account'
+import { ImageDiffType } from '../../models/diff'
+import { CommittedFileChange } from '../../models/status'
 import { CommitGraphScope, ICommitGraphState } from '../../models/commit-graph'
+import { ICommitSelection } from '../../lib/app-state'
 import { Emoji } from '../../lib/emoji'
 import { layoutCommitGraph } from '../../lib/commit-graph/layout'
 import { getCommitGraphRefs } from '../../lib/commit-graph/refs'
+import {
+  DefaultCommitGraphDetailsWidth,
+  getCommitGraphDetailsWidth,
+  setCommitGraphDetailsWidth,
+} from '../../lib/commit-graph/state'
 import { Dispatcher } from '../dispatcher'
 import { List } from '../lib/list'
 import { Select } from '../lib/select'
 import { ThrottledScheduler } from '../lib/throttled-scheduler'
 import { Resizable } from '../resizable'
-import {
-  DefaultCommitGraphListWidth,
-  getCommitGraphListWidth,
-  setCommitGraphListWidth,
-} from '../../lib/commit-graph/state'
 import { CommitGraphRow } from './commit-graph-row'
+import { CommitGraphDetails } from './commit-graph-details'
+import { CommitGraphDiff } from './commit-graph-diff'
 import {
   CommitGraphLaneWidth,
   CommitGraphRowHeight,
@@ -30,11 +36,11 @@ const MaxVisibleLanes = 20
 /** Load more commits when the last visible row is this close to the end. */
 const CloseToBottomThreshold = 50
 
-/** The narrowest the graph list can be resized to. */
-const MinimumListWidth = 360
+/** The narrowest the commit details panel can be resized to. */
+const MinimumDetailsWidth = 300
 
-/** The width kept for the commit details next to the graph list. */
-const MinimumDetailsWidth = 400
+/** The width always kept for the graph next to the commit details. */
+const MinimumGraphWidth = 400
 
 interface ICommitGraphViewProps {
   readonly repository: Repository
@@ -44,9 +50,13 @@ interface ICommitGraphViewProps {
   readonly branches: ReadonlyArray<Branch>
   readonly localTags: Map<string, string> | null
   readonly tip: Tip
-  readonly selectedSHAs: ReadonlyArray<string>
+  readonly commitSelection: ICommitSelection
   readonly emoji: Map<string, Emoji>
+  readonly accounts: ReadonlyArray<Account>
   readonly preferAbsoluteDates: boolean
+  readonly imageDiffType: ImageDiffType
+  readonly hideWhitespaceInDiff: boolean
+  readonly showSideBySideDiff: boolean
 
   /** The repository section tabs, rendered in the header. */
   readonly tabs: JSX.Element
@@ -54,18 +64,27 @@ interface ICommitGraphViewProps {
   /** The width of the tabs area, matching the repository sidebar. */
   readonly tabsWidth: number
 
-  /** The details of the selected commit, rendered next to the graph. */
-  readonly details: JSX.Element
+  readonly onOpenInExternalEditor: (path: string) => void
+  readonly onOpenBinaryFile: (fullPath: string) => void
+  readonly onOpenSubmodule: (fullPath: string) => void
+  readonly onChangeImageDiffType: (type: ImageDiffType) => void
+  readonly onDiffOptionsOpened: () => void
 }
 
 interface ICommitGraphViewState {
-  /** The width of the graph list, the details take the remaining space. */
-  readonly listWidth: number
+  /** The width of the commit details panel on the right. */
+  readonly detailsWidth: number
+
+  /** Whether the diff of the selected file is shown in place of the graph. */
+  readonly isDiffOpen: boolean
 }
 
 /**
  * A full-width view of the repository history drawn as a graph, with the
- * details of the selected commit next to it.
+ * details of the selected commit in a panel on the right.
+ *
+ * Clicking a file in the details shows its diff in place of the graph, until
+ * the diff is closed or another commit is selected.
  */
 export class CommitGraphView extends React.Component<
   ICommitGraphViewProps,
@@ -87,10 +106,24 @@ export class CommitGraphView extends React.Component<
 
   public constructor(props: ICommitGraphViewProps) {
     super(props)
-    this.state = { listWidth: getCommitGraphListWidth() }
+    this.state = {
+      detailsWidth: getCommitGraphDetailsWidth(),
+      isDiffOpen: false,
+    }
+  }
+
+  public componentDidUpdate(prevProps: ICommitGraphViewProps) {
+    const previous = prevProps.commitSelection.shas.join()
+    const current = this.props.commitSelection.shas.join()
+
+    if (previous !== current && this.state.isDiffOpen) {
+      this.setState({ isDiffOpen: false })
+    }
   }
 
   public render() {
+    const diff = this.renderDiff()
+
     return (
       <div className="commit-graph-view">
         <div className="commit-graph-header">
@@ -103,36 +136,101 @@ export class CommitGraphView extends React.Component<
           <div className="commit-graph-toolbar">{this.renderScopeSelect()}</div>
         </div>
         <div className="commit-graph-body">
-          <Resizable
-            id="commit-graph-list-pane"
-            width={this.state.listWidth}
-            minimumWidth={MinimumListWidth}
-            maximumWidth={Math.max(
-              MinimumListWidth,
-              window.innerWidth - MinimumDetailsWidth
-            )}
-            onResize={this.onListResize}
-            onReset={this.onListWidthReset}
-            description="Commit graph"
-          >
-            <div className="commit-graph-list">
+          <div className="commit-graph-main">
+            {diff}
+            {/* Kept mounted while the diff is open to preserve the scroll position */}
+            <div className="commit-graph-list" hidden={diff !== null}>
               {this.renderColumnHeaders()}
               {this.renderList()}
             </div>
+          </div>
+          <Resizable
+            id="commit-graph-details-pane"
+            handlePosition="left"
+            width={this.state.detailsWidth}
+            minimumWidth={MinimumDetailsWidth}
+            maximumWidth={Math.max(
+              MinimumDetailsWidth,
+              window.innerWidth - MinimumGraphWidth
+            )}
+            onResize={this.onDetailsResize}
+            onReset={this.onDetailsWidthReset}
+            description="Commit details"
+          >
+            {this.renderDetails()}
           </Resizable>
-          <div className="commit-graph-details">{this.props.details}</div>
         </div>
       </div>
     )
   }
 
-  private onListResize = (listWidth: number) => {
-    this.setState({ listWidth })
-    setCommitGraphListWidth(listWidth)
+  private renderDetails() {
+    const { commitSelection, commitLookup } = this.props
+    const selectedCommits = commitSelection.shas.flatMap(sha => {
+      const commit = commitLookup.get(sha)
+      return commit === undefined ? [] : [commit]
+    })
+
+    return (
+      <CommitGraphDetails
+        repository={this.props.repository}
+        dispatcher={this.props.dispatcher}
+        emoji={this.props.emoji}
+        accounts={this.props.accounts}
+        selectedCommits={selectedCommits}
+        shasInDiff={commitSelection.shasInDiff}
+        changesetData={commitSelection.changesetData}
+        selectedFile={this.state.isDiffOpen ? commitSelection.file : null}
+        width={this.state.detailsWidth}
+        onOpenFile={this.onOpenFile}
+        onOpenInExternalEditor={this.props.onOpenInExternalEditor}
+      />
+    )
   }
 
-  private onListWidthReset = () => {
-    this.onListResize(DefaultCommitGraphListWidth)
+  private renderDiff() {
+    const { file, diff } = this.props.commitSelection
+    if (!this.state.isDiffOpen || file === null) {
+      return null
+    }
+
+    return (
+      <CommitGraphDiff
+        repository={this.props.repository}
+        dispatcher={this.props.dispatcher}
+        file={file}
+        diff={diff}
+        imageDiffType={this.props.imageDiffType}
+        hideWhitespaceInDiff={this.props.hideWhitespaceInDiff}
+        showSideBySideDiff={this.props.showSideBySideDiff}
+        onOpenBinaryFile={this.props.onOpenBinaryFile}
+        onOpenSubmodule={this.props.onOpenSubmodule}
+        onChangeImageDiffType={this.props.onChangeImageDiffType}
+        onDiffOptionsOpened={this.props.onDiffOptionsOpened}
+        onClose={this.onCloseDiff}
+      />
+    )
+  }
+
+  private onOpenFile = (file: CommittedFileChange) => {
+    const current = this.props.commitSelection.file
+    if (current === null || current.id !== file.id) {
+      this.props.dispatcher.changeFileSelection(this.props.repository, file)
+    }
+    this.setState({ isDiffOpen: true })
+  }
+
+  private onCloseDiff = () => {
+    this.setState({ isDiffOpen: false })
+  }
+
+  private onDetailsResize = (detailsWidth: number) => {
+    this.setState({ detailsWidth })
+    setCommitGraphDetailsWidth(detailsWidth)
+  }
+
+  private onDetailsWidthReset = () => {
+    this.onDetailsResize(DefaultCommitGraphDetailsWidth)
   }
 
   private renderScopeSelect() {
@@ -269,7 +367,7 @@ export class CommitGraphView extends React.Component<
 
   private get selectedRows() {
     const { commitSHAs } = this.props.graphState
-    return this.props.selectedSHAs.flatMap(sha => {
+    return this.props.commitSelection.shas.flatMap(sha => {
       const index = commitSHAs.indexOf(sha)
       return index === -1 ? [] : [index]
     })

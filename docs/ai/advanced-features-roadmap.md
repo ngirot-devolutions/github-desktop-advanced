@@ -41,9 +41,10 @@ différenciateur des clients Git avancés. Desktop n'affiche qu'un historique li
 branche courante.
 
 Livré (v1, derrière `enableCommitGraph()`) : onglet **Graph** pleine largeur
-(colonnes graphe | refs + message | auteur | date | SHA, largeur de la liste
-redimensionnable et mémorisée), détails du commit sélectionné dans une colonne à
-droite comme dans History, portée « All branches / Current branch » mémorisée,
+(colonnes graphe | refs + message | auteur | date | SHA). Panneau de détails à
+droite (résumé, description, fichiers ; largeur redimensionnable et mémorisée).
+Un clic sur un fichier affiche son diff à la place du graphe, fermé par ✕, Échap
+ou en changeant de commit ; portée « All branches / Current branch » mémorisée,
 chargement par pages de 300 commits (`--date-order`), rafraîchissement
 uniquement quand les refs changent.
 

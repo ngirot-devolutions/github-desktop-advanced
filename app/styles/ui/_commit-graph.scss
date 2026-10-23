@@ -84,8 +84,12 @@ body.theme-dark {
     min-height: 0;
   }
 
-  #commit-graph-list-pane {
-    border-right: var(--base-border);
+  .commit-graph-main {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
   }
 
   .commit-graph-list {
@@ -93,12 +97,84 @@ body.theme-dark {
     flex-direction: column;
     flex: 1 1 auto;
     min-height: 0;
+
+    &[hidden] {
+      display: none;
+    }
+  }
+
+  #commit-graph-details-pane {
+    border-left: var(--base-border);
   }
 
   .commit-graph-details {
     display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+
+    &.blankslate {
+      align-items: center;
+      justify-content: center;
+      color: var(--text-secondary-color);
+    }
+
+    .file-list-header {
+      flex: 0 0 auto;
+      height: 30px;
+      line-height: 30px;
+      padding: 0 var(--spacing);
+      background: var(--box-alt-background-color);
+      border-top: var(--base-border);
+      border-bottom: var(--base-border);
+      text-align: center;
+    }
+
+    .file-list {
+      display: flex;
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    .commit-graph-no-files {
+      padding: var(--spacing);
+      color: var(--text-secondary-color);
+    }
+  }
+
+  .commit-graph-diff {
+    display: flex;
+    flex-direction: column;
     flex: 1 1 auto;
     min-width: 0;
+    min-height: 0;
+
+    .commit-graph-diff-header {
+      display: flex;
+      align-items: center;
+      background: var(--box-alt-background-color);
+      border-bottom: 1px solid var(--diff-border-color);
+
+      > :first-child {
+        flex: 1 1 auto;
+        min-width: 0;
+        border-bottom: none;
+      }
+    }
+
+    .commit-graph-diff-close {
+      flex: 0 0 auto;
+      margin: 0 var(--spacing-half);
+      padding: 0 var(--spacing-half);
+      border: none;
+      background: transparent;
+      box-shadow: none;
+      color: var(--text-secondary-color);
+
+      &:hover {
+        color: var(--text-color);
+      }
+    }
   }
 
   .commit-graph-empty {
