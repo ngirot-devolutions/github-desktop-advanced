@@ -679,6 +679,7 @@ export class RepositoryView extends React.Component<
         imageDiffType={this.props.imageDiffType}
         hideWhitespaceInDiff={this.props.hideWhitespaceInHistoryDiff}
         showSideBySideDiff={this.props.showSideBySideDiff}
+        gitHubRepository={this.props.repository.gitHubRepository}
         tabs={this.renderTabs()}
         tabsWidth={this.props.sidebarWidth.value}
         onOpenInExternalEditor={this.props.onOpenInExternalEditor}

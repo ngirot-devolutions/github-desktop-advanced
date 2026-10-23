@@ -1,10 +1,12 @@
 import * as React from 'react'
 import memoizeOne from 'memoize-one'
+import classNames from 'classnames'
 import { Repository } from '../../models/repository'
 import { Commit } from '../../models/commit'
 import { Branch } from '../../models/branch'
 import { Tip, TipState } from '../../models/tip'
 import { Account } from '../../models/account'
+import { GitHubRepository } from '../../models/github-repository'
 import { ImageDiffType } from '../../models/diff'
 import { CommittedFileChange } from '../../models/status'
 import { CommitGraphScope, ICommitGraphState } from '../../models/commit-graph'
@@ -17,6 +19,15 @@ import {
   getCommitGraphDetailsWidth,
   setCommitGraphDetailsWidth,
 } from '../../lib/commit-graph/state'
+import {
+  CommitGraphColumnId,
+  CommitGraphColumnTitles,
+  DefaultCommitGraphColumns,
+  getCommitGraphColumnsPreference,
+  moveCommitGraphColumn,
+  setCommitGraphColumnsPreference,
+} from '../../lib/commit-graph/columns'
+import { IMenuItem, showContextualMenu } from '../../lib/menu-item'
 import { Dispatcher } from '../dispatcher'
 import { List } from '../lib/list'
 import { Select } from '../lib/select'
@@ -31,7 +42,7 @@ import {
 } from './commit-graph-lanes'
 
 /** Lanes beyond this count are clipped to keep room for the descriptions. */
-const MaxVisibleLanes = 20
+const MaxVisibleLanes = 10
 
 /** Load more commits when the last visible row is this close to the end. */
 const CloseToBottomThreshold = 50
@@ -57,6 +68,7 @@ interface ICommitGraphViewProps {
   readonly imageDiffType: ImageDiffType
   readonly hideWhitespaceInDiff: boolean
   readonly showSideBySideDiff: boolean
+  readonly gitHubRepository: GitHubRepository | null
 
   /** The repository section tabs, rendered in the header. */
   readonly tabs: JSX.Element
@@ -77,6 +89,12 @@ interface ICommitGraphViewState {
 
   /** Whether the diff of the selected file is shown in place of the graph. */
   readonly isDiffOpen: boolean
+
+  /** The order of the columns of the graph list. */
+  readonly columns: ReadonlyArray<CommitGraphColumnId>
+
+  /** The column whose header is being dragged, if any. */
+  readonly draggedColumn: CommitGraphColumnId | null
 }
 
 /**
@@ -109,6 +127,8 @@ export class CommitGraphView extends React.Component<
     this.state = {
       detailsWidth: getCommitGraphDetailsWidth(),
       isDiffOpen: false,
+      columns: getCommitGraphColumnsPreference(),
+      draggedColumn: null,
     }
   }
 
@@ -249,19 +269,107 @@ export class CommitGraphView extends React.Component<
 
   private renderColumnHeaders() {
     return (
-      <div className="commit-graph-row commit-graph-column-headers">
-        <div
-          className="commit-graph-cell graph"
-          style={{ width: this.graphWidth }}
-        >
-          Graph
-        </div>
-        <div className="commit-graph-cell description">Description</div>
-        <div className="commit-graph-cell author">Author</div>
-        <div className="commit-graph-cell date">Date</div>
-        <div className="commit-graph-cell sha">Commit</div>
+      <div
+        className="commit-graph-row commit-graph-column-headers"
+        onContextMenu={this.onColumnHeadersContextMenu}
+      >
+        {this.state.columns.map(this.renderColumnHeader)}
       </div>
     )
+  }
+
+  private renderColumnHeader = (column: CommitGraphColumnId) => {
+    const isDragged = this.state.draggedColumn === column
+
+    return (
+      <div
+        key={column}
+        className={classNames('commit-graph-cell', column, {
+          dragged: isDragged,
+        })}
+        style={column === 'graph' ? { width: this.graphWidth } : undefined}
+        draggable={true}
+        data-column={column}
+        onDragStart={this.onColumnDragStart}
+        onDragOver={this.onColumnDragOver}
+        onDrop={this.onColumnDrop}
+        onDragEnd={this.onColumnDragEnd}
+      >
+        {CommitGraphColumnTitles[column]}
+      </div>
+    )
+  }
+
+  private getColumnFromEvent(event: React.DragEvent<HTMLDivElement>) {
+    const column = event.currentTarget.dataset.column
+    return this.state.columns.find(c => c === column) ?? null
+  }
+
+  private onColumnDragStart = (event: React.DragEvent<HTMLDivElement>) => {
+    const column = this.getColumnFromEvent(event)
+    if (column !== null) {
+      event.dataTransfer.effectAllowed = 'move'
+      event.dataTransfer.setData('text/plain', column)
+      this.setState({ draggedColumn: column })
+    }
+  }
+
+  private onColumnDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    if (this.state.draggedColumn !== null) {
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'move'
+    }
+  }
+
+  private onColumnDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    const { draggedColumn } = this.state
+    const target = this.getColumnFromEvent(event)
+
+    if (draggedColumn !== null && target !== null) {
+      event.preventDefault()
+      this.setColumns(
+        moveCommitGraphColumn(this.state.columns, draggedColumn, target)
+      )
+    }
+    this.setState({ draggedColumn: null })
+  }
+
+  private onColumnDragEnd = () => {
+    this.setState({ draggedColumn: null })
+  }
+
+  private onColumnHeadersContextMenu = (
+    event: React.MouseEvent<HTMLDivElement>
+  ) => {
+    event.preventDefault()
+
+    const { columns } = this.state
+    const moveItems = columns.map((column, index): IMenuItem => {
+      const label = CommitGraphColumnTitles[column]
+      return {
+        label: __DARWIN__ ? `Move ${label} Left` : `Move ${label} left`,
+        enabled: index > 0,
+        action: () =>
+          this.setColumns(
+            moveCommitGraphColumn(columns, column, columns[index - 1])
+          ),
+      }
+    })
+
+    showContextualMenu([
+      ...moveItems,
+      { type: 'separator' },
+      {
+        label: __DARWIN__ ? 'Reset Column Order' : 'Reset column order',
+        enabled: columns !== DefaultCommitGraphColumns,
+        action: () => this.setColumns(DefaultCommitGraphColumns),
+      },
+    ])
+  }
+
+  private setColumns(columns: ReadonlyArray<CommitGraphColumnId>) {
+    this.setState({ columns })
+    setCommitGraphColumnsPreference(columns)
   }
 
   private renderList() {
@@ -292,6 +400,7 @@ export class CommitGraphView extends React.Component<
           localTags: this.props.localTags,
           tip: this.props.tip,
           preferAbsoluteDates: this.props.preferAbsoluteDates,
+          columns: this.state.columns,
         }}
       />
     )
@@ -315,6 +424,9 @@ export class CommitGraphView extends React.Component<
         refs={this.refsBySha.get(sha) ?? []}
         graphWidth={this.graphWidth}
         isHead={sha === this.headSHA}
+        columns={this.state.columns}
+        gitHubRepository={this.props.gitHubRepository}
+        accounts={this.props.accounts}
         emoji={this.props.emoji}
         preferAbsoluteDates={this.props.preferAbsoluteDates}
       />

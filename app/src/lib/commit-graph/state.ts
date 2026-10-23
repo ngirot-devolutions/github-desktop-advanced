@@ -5,6 +5,10 @@ import { getNumber, setNumber } from '../local-storage'
 
 const commitGraphScopeKey = 'commit-graph-scope'
 const commitGraphDetailsWidthKey = 'commit-graph-details-width'
+const commitGraphSummaryHeightKey = 'commit-graph-summary-height'
+
+/** The default height of the commit summary above the changed files. */
+export const DefaultCommitGraphSummaryHeight = 180
 
 /** The default width of the commit details panel in the commit graph view. */
 export const DefaultCommitGraphDetailsWidth = 460
@@ -40,6 +44,16 @@ export function getCommitGraphDetailsWidth(): number {
 /** Remember the width of the commit details panel. */
 export function setCommitGraphDetailsWidth(width: number) {
   setNumber(commitGraphDetailsWidthKey, width)
+}
+
+/** Read the height of the commit summary last chosen by the user. */
+export function getCommitGraphSummaryHeight(): number {
+  return getNumber(commitGraphSummaryHeightKey, DefaultCommitGraphSummaryHeight)
+}
+
+/** Remember the height of the commit summary. */
+export function setCommitGraphSummaryHeight(height: number) {
+  setNumber(commitGraphSummaryHeightKey, height)
 }
 
 export function getInitialCommitGraphState(): ICommitGraphState {

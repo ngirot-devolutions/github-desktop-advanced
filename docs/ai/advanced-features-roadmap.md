@@ -41,8 +41,11 @@ différenciateur des clients Git avancés. Desktop n'affiche qu'un historique li
 branche courante.
 
 Livré (v1, derrière `enableCommitGraph()`) : onglet **Graph** pleine largeur
-(colonnes graphe | refs + message | auteur | date | SHA). Panneau de détails à
-droite (résumé, description, fichiers ; largeur redimensionnable et mémorisée).
+(colonnes Branch / Tag | graphe | message | auteur | date | SHA, réordonnables
+par glisser-déposer ou menu contextuel, ordre mémorisé ; avatar de l'auteur sur
+chaque commit, point pour les merges). Panneau de détails à droite (largeur
+redimensionnable) : résumé à hauteur fixe et redimensionnable au-dessus des
+fichiers, hauteurs et largeurs mémorisées.
 Un clic sur un fichier affiche son diff à la place du graphe, fermé par ✕, Échap
 ou en changeant de commit ; portée « All branches / Current branch » mémorisée,
 chargement par pages de 300 commits (`--date-order`), rafraîchissement
@@ -58,8 +61,9 @@ uniquement quand les refs changent.
 
 Reste à faire :
 
-- Largeur de la colonne graphe redimensionnable (sur un gros dépôt, les tags
-  de branches de release jamais mergées ouvrent beaucoup de lanes).
+- Largeur des colonnes redimensionnable, notamment le graphe (limité à 10
+  lanes visibles : sur un gros dépôt, les tags de branches de release jamais
+  mergées ouvrent beaucoup de lanes).
 - Sélection multiple, navigation clavier vers parent / enfant.
 - Les actions sur le graphe relèvent d'ADV-02, la recherche et le filtrage
   d'ADV-22.

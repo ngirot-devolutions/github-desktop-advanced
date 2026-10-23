@@ -119,13 +119,36 @@ body.theme-dark {
       color: var(--text-secondary-color);
     }
 
+    .commit-graph-summary {
+      display: flex;
+      flex-direction: column;
+      flex: 0 0 auto;
+      overflow: hidden;
+
+      #expandable-commit-summary {
+        flex: 1 1 auto;
+        border-bottom: none;
+
+        .beneath-summary {
+          flex: 1 1 auto;
+          min-height: 0;
+          overflow-y: auto;
+        }
+
+        // The summary has a fixed height, let the description use all of it
+        // and scroll with the rest of the summary.
+        .ecs-description-scroll-view {
+          max-height: none;
+        }
+      }
+    }
+
     .file-list-header {
       flex: 0 0 auto;
       height: 30px;
       line-height: 30px;
       padding: 0 var(--spacing);
       background: var(--box-alt-background-color);
-      border-top: var(--base-border);
       border-bottom: var(--base-border);
       text-align: center;
     }
@@ -177,6 +200,26 @@ body.theme-dark {
     }
   }
 
+  .commit-graph-splitter {
+    flex: 0 0 auto;
+    width: 100%;
+    height: 5px;
+    padding: 0;
+    border-left: none;
+    border-right: none;
+    border-radius: 0;
+    cursor: ns-resize;
+    background: var(--box-alt-background-color);
+    border-top: var(--base-border);
+    border-bottom: var(--base-border);
+
+    &:hover,
+    &:focus {
+      background: var(--box-border-color);
+      outline: none;
+    }
+  }
+
   .commit-graph-empty {
     padding: var(--spacing-double);
     color: var(--text-secondary-color);
@@ -198,6 +241,23 @@ body.theme-dark {
     color: var(--text-secondary-color);
     font-size: var(--font-size-sm);
     font-weight: var(--font-weight-semibold);
+
+    .commit-graph-cell {
+      display: flex;
+      align-items: center;
+      height: 100%;
+      padding: 0 var(--spacing-half);
+      cursor: grab;
+      user-select: none;
+
+      &:hover {
+        color: var(--text-color);
+      }
+
+      &.dragged {
+        opacity: 0.4;
+      }
+    }
   }
 
   .commit-graph-cell {
@@ -209,9 +269,16 @@ body.theme-dark {
     text-overflow: ellipsis;
 
     &.graph {
+      position: relative;
       padding: 0;
       overflow: hidden;
       height: 100%;
+      display: flex;
+      align-items: center;
+    }
+
+    &.refs {
+      width: 180px;
       display: flex;
       align-items: center;
     }
@@ -258,6 +325,26 @@ body.theme-dark {
     fill: none;
     stroke: var(--commit-graph-lane-color);
     stroke-width: 2;
+  }
+
+  .commit-graph-avatar {
+    position: absolute;
+    top: 4px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--background-color);
+    box-shadow: 0 0 0 2px var(--commit-graph-lane-color);
+
+    &.head {
+      box-shadow: 0 0 0 2px var(--commit-graph-lane-color), 0 0 0 4px var(--text-color);
+    }
+
+    .avatar-container,
+    .avatar {
+      width: 20px;
+      height: 20px;
+    }
   }
 
   .commit-graph-node {
@@ -325,6 +412,12 @@ body.theme-dark {
       flex: 0 0 auto;
       width: 10px;
       height: 10px;
+    }
+
+    .commit-graph-ref-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
   }
 }

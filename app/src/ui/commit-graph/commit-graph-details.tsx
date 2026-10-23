@@ -9,6 +9,18 @@ import { Dispatcher } from '../dispatcher'
 import { ExpandableCommitSummary } from '../history/expandable-commit-summary'
 import { FileList } from '../history/file-list'
 import { UnreachableCommitsTab } from '../history/unreachable-commits-dialog'
+import {
+  DefaultCommitGraphSummaryHeight,
+  getCommitGraphSummaryHeight,
+  setCommitGraphSummaryHeight,
+} from '../../lib/commit-graph/state'
+import { CommitGraphSplitter } from './commit-graph-splitter'
+
+/** The smallest height of the commit summary. */
+const MinimumSummaryHeight = 60
+
+/** The height always kept for the header, the file list and the window chrome. */
+const ReservedHeight = 260
 
 interface ICommitGraphDetailsProps {
   readonly repository: Repository
@@ -32,6 +44,12 @@ interface ICommitGraphDetailsProps {
 
 interface ICommitGraphDetailsState {
   readonly isExpanded: boolean
+
+  /**
+   * The height of the commit summary. It stays the same when another commit
+   * is selected, so that the file list doesn't move around.
+   */
+  readonly summaryHeight: number
 }
 
 /**
@@ -44,7 +62,10 @@ export class CommitGraphDetails extends React.Component<
 > {
   public constructor(props: ICommitGraphDetailsProps) {
     super(props)
-    this.state = { isExpanded: false }
+    this.state = {
+      isExpanded: false,
+      summaryHeight: getCommitGraphSummaryHeight(),
+    }
   }
 
   public componentDidUpdate(prevProps: ICommitGraphDetailsProps) {
@@ -67,19 +88,39 @@ export class CommitGraphDetails extends React.Component<
       )
     }
 
+    const maximumSummaryHeight = Math.max(
+      MinimumSummaryHeight,
+      window.innerHeight - ReservedHeight
+    )
+
     return (
       <div className="commit-graph-details">
-        <ExpandableCommitSummary
-          selectedCommits={selectedCommits}
-          shasInDiff={this.props.shasInDiff}
-          changesetData={this.props.changesetData}
-          emoji={this.props.emoji}
-          repository={this.props.repository}
-          onExpandChanged={this.onExpandChanged}
-          isExpanded={this.state.isExpanded}
-          onHighlightShas={this.onHighlightShas}
-          showUnreachableCommits={this.showUnreachableCommits}
-          accounts={this.props.accounts}
+        <div
+          className="commit-graph-summary"
+          style={{
+            height: Math.min(this.state.summaryHeight, maximumSummaryHeight),
+          }}
+        >
+          <ExpandableCommitSummary
+            selectedCommits={selectedCommits}
+            shasInDiff={this.props.shasInDiff}
+            changesetData={this.props.changesetData}
+            emoji={this.props.emoji}
+            repository={this.props.repository}
+            onExpandChanged={this.onExpandChanged}
+            isExpanded={this.state.isExpanded}
+            onHighlightShas={this.onHighlightShas}
+            showUnreachableCommits={this.showUnreachableCommits}
+            accounts={this.props.accounts}
+          />
+        </div>
+        <CommitGraphSplitter
+          height={this.state.summaryHeight}
+          minimumHeight={MinimumSummaryHeight}
+          maximumHeight={maximumSummaryHeight}
+          label="Resize commit summary"
+          onResize={this.onSummaryResize}
+          onReset={this.onSummaryHeightReset}
         />
         {this.renderFileList()}
       </div>
@@ -122,6 +163,15 @@ export class CommitGraphDetails extends React.Component<
     if (file !== undefined) {
       this.props.onOpenInExternalEditor(file.path)
     }
+  }
+
+  private onSummaryResize = (summaryHeight: number) => {
+    this.setState({ summaryHeight })
+    setCommitGraphSummaryHeight(summaryHeight)
+  }
+
+  private onSummaryHeightReset = () => {
+    this.onSummaryResize(DefaultCommitGraphSummaryHeight)
   }
 
   private onExpandChanged = (isExpanded: boolean) => {

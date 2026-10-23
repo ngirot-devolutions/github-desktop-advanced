@@ -1,56 +1,148 @@
 import * as React from 'react'
 import classNames from 'classnames'
 import { Commit } from '../../models/commit'
+import { Account } from '../../models/account'
+import { GitHubRepository } from '../../models/github-repository'
+import { getAvatarUserFromAuthor } from '../../models/avatar'
 import { Emoji } from '../../lib/emoji'
 import { ICommitGraphRow } from '../../lib/commit-graph/layout'
 import { ICommitGraphRef } from '../../lib/commit-graph/refs'
-import { RichText } from '../lib/rich-text'
-import { RelativeTime } from '../relative-time'
+import { CommitGraphColumnId } from '../../lib/commit-graph/columns'
+import { assertNever } from '../../lib/fatal-error'
 import { formatDate } from '../../lib/format-date'
-import { CommitGraphLanes, laneClass } from './commit-graph-lanes'
+import { RichText } from '../lib/rich-text'
+import { Avatar } from '../lib/avatar'
+import { TooltippedContent } from '../lib/tooltipped-content'
+import { RelativeTime } from '../relative-time'
 import { Octicon } from '../octicons'
 import * as octicons from '../octicons/octicons.generated'
-import { TooltippedContent } from '../lib/tooltipped-content'
+import {
+  CommitGraphAvatarSize,
+  CommitGraphLanes,
+  laneCenter,
+  laneClass,
+} from './commit-graph-lanes'
 
 /** The maximum number of ref labels displayed before collapsing the rest. */
-const MaxVisibleRefs = 3
+const MaxVisibleRefs = 2
 
 interface ICommitGraphRowProps {
   readonly commit: Commit
   readonly row: ICommitGraphRow
   readonly refs: ReadonlyArray<ICommitGraphRef>
+  readonly columns: ReadonlyArray<CommitGraphColumnId>
   readonly graphWidth: number
   readonly isHead: boolean
+  readonly gitHubRepository: GitHubRepository | null
+  readonly accounts: ReadonlyArray<Account>
   readonly emoji: Map<string, Emoji>
   readonly preferAbsoluteDates: boolean
 }
 
-/** A single commit in the commit graph: lanes, refs, summary and metadata. */
+/** A single commit in the commit graph, its cells in the order of `columns`. */
 export class CommitGraphRow extends React.PureComponent<ICommitGraphRowProps> {
   public render() {
-    const { commit, row, graphWidth, isHead } = this.props
+    return (
+      <div className="commit-graph-row">
+        {this.props.columns.map(this.renderCell)}
+      </div>
+    )
+  }
+
+  private renderCell = (column: CommitGraphColumnId) => {
+    const { commit } = this.props
+
+    switch (column) {
+      case 'refs':
+        return (
+          <div key={column} className="commit-graph-cell refs">
+            {this.renderRefs()}
+          </div>
+        )
+      case 'graph':
+        return (
+          <div
+            key={column}
+            className="commit-graph-cell graph"
+            style={{ width: this.props.graphWidth }}
+          >
+            <CommitGraphLanes
+              row={this.props.row}
+              width={this.props.graphWidth}
+              isHead={this.props.isHead}
+            />
+            {this.renderAvatar()}
+          </div>
+        )
+      case 'description':
+        return (
+          <div key={column} className="commit-graph-cell description">
+            {this.renderSummary()}
+          </div>
+        )
+      case 'author':
+        return (
+          <div key={column} className="commit-graph-cell author">
+            {commit.author.name}
+          </div>
+        )
+      case 'date':
+        return (
+          <div key={column} className="commit-graph-cell date">
+            {this.renderDate()}
+          </div>
+        )
+      case 'sha':
+        return (
+          <div key={column} className="commit-graph-cell sha">
+            {commit.shortSha}
+          </div>
+        )
+      default:
+        return assertNever(column, `Unknown column: ${column}`)
+    }
+  }
+
+  private renderAvatar() {
+    const { row, commit, isHead, graphWidth } = this.props
+    const left = laneCenter(row.column) - CommitGraphAvatarSize / 2
+
+    // Merge commits are drawn as a dot, and nodes in clipped lanes are hidden.
+    if (row.isMerge || left + CommitGraphAvatarSize > graphWidth) {
+      return null
+    }
+
+    return (
+      <div
+        className={classNames('commit-graph-avatar', laneClass(row.color), {
+          head: isHead,
+        })}
+        style={{ left }}
+      >
+        <Avatar
+          user={getAvatarUserFromAuthor(
+            commit.author,
+            this.props.gitHubRepository
+          )}
+          accounts={this.props.accounts}
+          size={CommitGraphAvatarSize * 2}
+          tooltip={false}
+        />
+      </div>
+    )
+  }
+
+  private renderSummary() {
+    const { commit } = this.props
     const hasEmptySummary = commit.summary.length === 0
 
     return (
-      <div className="commit-graph-row">
-        <div className="commit-graph-cell graph" style={{ width: graphWidth }}>
-          <CommitGraphLanes row={row} width={graphWidth} isHead={isHead} />
-        </div>
-        <div className="commit-graph-cell description">
-          {this.renderRefs()}
-          <RichText
-            className={classNames('summary', {
-              'empty-summary': hasEmptySummary,
-            })}
-            emoji={this.props.emoji}
-            text={hasEmptySummary ? 'Empty commit message' : commit.summary}
-            renderUrlsAsLinks={false}
-          />
-        </div>
-        <div className="commit-graph-cell author">{commit.author.name}</div>
-        <div className="commit-graph-cell date">{this.renderDate()}</div>
-        <div className="commit-graph-cell sha">{commit.shortSha}</div>
-      </div>
+      <RichText
+        className={classNames('summary', { 'empty-summary': hasEmptySummary })}
+        emoji={this.props.emoji}
+        text={hasEmptySummary ? 'Empty commit message' : commit.summary}
+        renderUrlsAsLinks={false}
+      />
     )
   }
 
@@ -75,7 +167,7 @@ export class CommitGraphRow extends React.PureComponent<ICommitGraphRowProps> {
             )}
           >
             {ref.kind === 'tag' && <Octicon symbol={octicons.tag} />}
-            {ref.name}
+            <span className="commit-graph-ref-name">{ref.name}</span>
           </span>
         ))}
         {hidden.length > 0 && (

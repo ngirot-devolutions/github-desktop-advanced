@@ -9,12 +9,16 @@ import {
 export const CommitGraphRowHeight = 28
 
 /** The width of a single lane in the commit graph, in pixels. */
-export const CommitGraphLaneWidth = 14
+export const CommitGraphLaneWidth = 22
+
+/** The size of the author avatar drawn on regular commits, in pixels. */
+export const CommitGraphAvatarSize = 20
 
 /** The number of distinct lane colors defined in the stylesheet. */
 const LaneColorCount = 8
 
-const NodeRadius = 4
+/** The radius of the dot drawn for merge commits. */
+const MergeNodeRadius = 4
 
 interface ICommitGraphLanesProps {
   readonly row: ICommitGraphRow
@@ -26,7 +30,12 @@ interface ICommitGraphLanesProps {
   readonly isHead: boolean
 }
 
-/** Draws the lanes and the commit node of a single commit graph row. */
+/**
+ * Draws the lanes of a single commit graph row, and the node of merge commits.
+ *
+ * Regular commits are drawn with the author's avatar, positioned over the
+ * lanes by the row (see `laneCenter`).
+ */
 export class CommitGraphLanes extends React.PureComponent<ICommitGraphLanesProps> {
   public render() {
     const { row, width, isHead } = this.props
@@ -62,12 +71,14 @@ export class CommitGraphLanes extends React.PureComponent<ICommitGraphLanesProps
             d={edgePath(edge, middle, CommitGraphRowHeight)}
           />
         ))}
-        <circle
-          className={nodeClassName}
-          cx={laneCenter(row.column)}
-          cy={middle}
-          r={isHead ? NodeRadius + 1 : NodeRadius}
-        />
+        {row.isMerge && (
+          <circle
+            className={nodeClassName}
+            cx={laneCenter(row.column)}
+            cy={middle}
+            r={isHead ? MergeNodeRadius + 1 : MergeNodeRadius}
+          />
+        )}
       </svg>
     )
   }
@@ -78,7 +89,8 @@ export function laneClass(color: number) {
   return `lane-color-${color % LaneColorCount}`
 }
 
-function laneCenter(column: number) {
+/** The horizontal center of a lane, in pixels from the left of the graph. */
+export function laneCenter(column: number) {
   return column * CommitGraphLaneWidth + CommitGraphLaneWidth / 2
 }
 
