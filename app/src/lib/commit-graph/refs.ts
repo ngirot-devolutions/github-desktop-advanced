@@ -1,5 +1,11 @@
-import { Branch, BranchType } from '../../models/branch'
-import { Tip, TipState } from '../../models/tip'
+import { ICommitGraphRefs } from '../../models/commit-graph'
+import {
+  getGraphRefs,
+  isLocalBranchRef,
+  isRemoteBranchRef,
+  isTagRef,
+  shortRefName,
+} from './revisions'
 
 /** The kind of ref shown as a label next to a commit in the graph. */
 export type CommitGraphRefKind = 'head' | 'local' | 'remote' | 'tag'
@@ -8,6 +14,18 @@ export type CommitGraphRefKind = 'head' | 'local' | 'remote' | 'tag'
 export interface ICommitGraphRef {
   readonly name: string
   readonly kind: CommitGraphRefKind
+
+  /** The full name of the ref (e.g. `refs/heads/main`), or `HEAD`. */
+  readonly ref: string
+
+  /**
+   * The upstream of a local branch when it points at the same commit. Both
+   * are shown as a single label.
+   */
+  readonly upstream?: {
+    readonly name: string
+    readonly ref: string
+  }
 }
 
 const kindOrder: ReadonlyArray<CommitGraphRefKind> = [
@@ -21,58 +39,73 @@ const kindOrder: ReadonlyArray<CommitGraphRefKind> = [
  * Group the refs pointing at commits by commit SHA.
  *
  * The checked out branch (or a detached HEAD) is reported with the `head`
- * kind. Labels are sorted by kind and then by name.
+ * kind. A local branch and its upstream pointing at the same commit are
+ * merged into a single label. Labels are sorted by kind and then by name.
  */
 export function getCommitGraphRefs(
-  branches: ReadonlyArray<Branch>,
-  tags: ReadonlyMap<string, string> | null,
-  tip: Tip
+  repositoryRefs: ICommitGraphRefs | null
 ): ReadonlyMap<string, ReadonlyArray<ICommitGraphRef>> {
-  const currentBranch = tip.kind === TipState.Valid ? tip.branch.name : null
-  const refs = new Map<string, Array<ICommitGraphRef>>()
+  const labels = new Map<string, Array<ICommitGraphRef>>()
 
-  const add = (sha: string, ref: ICommitGraphRef) => {
-    const existing = refs.get(sha)
+  if (repositoryRefs === null) {
+    return labels
+  }
+
+  const add = (sha: string, label: ICommitGraphRef) => {
+    const existing = labels.get(sha)
     if (existing === undefined) {
-      refs.set(sha, [ref])
+      labels.set(sha, [label])
     } else {
-      existing.push(ref)
+      existing.push(label)
     }
   }
 
-  if (tip.kind === TipState.Detached) {
-    add(tip.currentSha, { name: 'HEAD', kind: 'head' })
+  const { headRef, headSha } = repositoryRefs
+  if (headRef === null && headSha !== null) {
+    add(headSha, { name: 'HEAD', kind: 'head', ref: 'HEAD' })
   }
 
-  for (const branch of branches) {
-    if (
-      branch.isDesktopForkRemoteBranch ||
-      (branch.type === BranchType.Remote && branch.name.endsWith('/HEAD'))
-    ) {
+  const refs = getGraphRefs(repositoryRefs)
+  const shaByRef = new Map(refs.map(r => [r.ref, r.sha]))
+
+  // Upstreams merged into the label of their local branch.
+  const mergedUpstreams = new Set<string>()
+
+  for (const { ref, sha, upstream } of refs) {
+    if (!isLocalBranchRef(ref)) {
       continue
     }
 
-    const kind =
-      branch.type === BranchType.Remote
-        ? 'remote'
-        : branch.name === currentBranch
-        ? 'head'
-        : 'local'
+    const isInSync = upstream !== null && shaByRef.get(upstream) === sha
+    if (isInSync) {
+      mergedUpstreams.add(upstream)
+    }
 
-    add(branch.tip.sha, { name: branch.name, kind })
+    add(sha, {
+      name: shortRefName(ref),
+      kind: ref === headRef ? 'head' : 'local',
+      ref,
+      ...(isInSync
+        ? { upstream: { name: shortRefName(upstream), ref: upstream } }
+        : {}),
+    })
   }
 
-  for (const [name, sha] of tags ?? []) {
-    add(sha, { name, kind: 'tag' })
+  for (const { ref, sha } of refs) {
+    if (isRemoteBranchRef(ref) && !mergedUpstreams.has(ref)) {
+      add(sha, { name: shortRefName(ref), kind: 'remote', ref })
+    } else if (isTagRef(ref)) {
+      add(sha, { name: shortRefName(ref), kind: 'tag', ref })
+    }
   }
 
-  for (const labels of refs.values()) {
-    labels.sort(
+  for (const shaLabels of labels.values()) {
+    shaLabels.sort(
       (a, b) =>
         kindOrder.indexOf(a.kind) - kindOrder.indexOf(b.kind) ||
         a.name.localeCompare(b.name)
     )
   }
 
-  return refs
+  return labels
 }

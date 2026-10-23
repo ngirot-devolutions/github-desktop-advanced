@@ -1,77 +1,99 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert'
-import { Branch, BranchType } from '../../../src/models/branch'
-import { Tip, TipState } from '../../../src/models/tip'
-import { getCommitGraphRefsSignature } from '../../../src/lib/commit-graph/state'
+import { ICommitGraphRefs } from '../../../src/models/commit-graph'
+import {
+  EmptyCommitGraphFilter,
+  getCommitGraphRefsSignature,
+  parseCommitGraphFilter,
+} from '../../../src/lib/commit-graph/state'
 
-const main = new Branch(
-  'main',
-  null,
-  { sha: 'aaa' },
-  BranchType.Local,
-  'refs/heads/main'
-)
-const tip: Tip = { kind: TipState.Valid, branch: main }
+const refs = (
+  shas: Record<string, string>,
+  headSha: string = 'aaa'
+): ICommitGraphRefs => ({
+  headSha,
+  headRef: 'refs/heads/main',
+  refs: Object.entries(shas).map(([ref, sha]) => ({
+    ref,
+    sha,
+    date: null,
+    upstream: null,
+  })),
+})
 
 describe('getCommitGraphRefsSignature', () => {
-  it('is stable regardless of the order of branches and tags', () => {
-    const feature = new Branch(
-      'feature',
-      null,
-      { sha: 'bbb' },
-      BranchType.Local,
-      'refs/heads/feature'
-    )
+  const repository = refs({
+    'refs/heads/main': 'aaa',
+    'refs/heads/feature': 'bbb',
+    'refs/heads/other': 'ccc',
+  })
 
+  it('is stable regardless of the order of the revisions', () => {
     assert.strictEqual(
       getCommitGraphRefsSignature(
-        'all-branches',
-        tip,
-        [main, feature],
-        new Map([
-          ['v1', 'aaa'],
-          ['v2', 'bbb'],
-        ])
+        ['HEAD', 'refs/heads/main', 'refs/heads/feature'],
+        repository
       ),
       getCommitGraphRefsSignature(
-        'all-branches',
-        tip,
-        [feature, main],
-        new Map([
-          ['v2', 'bbb'],
-          ['v1', 'aaa'],
-        ])
+        ['refs/heads/feature', 'HEAD', 'refs/heads/main'],
+        repository
       )
     )
   })
 
-  it('changes when a branch moves', () => {
-    const moved = new Branch(
-      'main',
-      null,
-      { sha: 'ccc' },
-      BranchType.Local,
-      'refs/heads/main'
-    )
+  it('changes when a shown ref moves', () => {
+    const revisions = ['HEAD', 'refs/tags/v1']
 
     assert.notStrictEqual(
-      getCommitGraphRefsSignature('all-branches', tip, [main], null),
-      getCommitGraphRefsSignature('all-branches', tip, [moved], null)
+      getCommitGraphRefsSignature(revisions, refs({ 'refs/tags/v1': 'a' })),
+      getCommitGraphRefsSignature(revisions, refs({ 'refs/tags/v1': 'b' }))
     )
   })
 
-  it('ignores other branches when only the current branch is shown', () => {
-    const other = new Branch(
-      'other',
-      null,
-      { sha: 'ddd' },
-      BranchType.Local,
-      'refs/heads/other'
+  it('changes when HEAD moves', () => {
+    assert.notStrictEqual(
+      getCommitGraphRefsSignature(['HEAD'], refs({}, 'aaa')),
+      getCommitGraphRefsSignature(['HEAD'], refs({}, 'bbb'))
     )
+  })
 
+  it('ignores refs that are not shown', () => {
     assert.strictEqual(
-      getCommitGraphRefsSignature('current-branch', tip, [main], null),
-      getCommitGraphRefsSignature('current-branch', tip, [main, other], null)
+      getCommitGraphRefsSignature(['HEAD'], repository),
+      getCommitGraphRefsSignature(
+        ['HEAD'],
+        refs({ 'refs/heads/main': 'aaa', 'refs/heads/other': 'moved' })
+      )
+    )
+  })
+
+  it('changes when the shown refs change', () => {
+    assert.notStrictEqual(
+      getCommitGraphRefsSignature(['HEAD'], repository),
+      getCommitGraphRefsSignature(['HEAD', 'refs/heads/feature'], repository)
+    )
+  })
+})
+
+describe('parseCommitGraphFilter', () => {
+  it('reads hidden and soloed refs', () => {
+    assert.deepStrictEqual(
+      parseCommitGraphFilter(
+        '{"hiddenRefs":["refs/heads/a"],"soloRefs":["refs/heads/b"]}'
+      ),
+      { hiddenRefs: ['refs/heads/a'], soloRefs: ['refs/heads/b'] }
+    )
+  })
+
+  it('ignores invalid values', () => {
+    assert.strictEqual(parseCommitGraphFilter(null), EmptyCommitGraphFilter)
+    assert.strictEqual(
+      parseCommitGraphFilter('not json'),
+      EmptyCommitGraphFilter
+    )
+    assert.deepStrictEqual(
+      parseCommitGraphFilter('{"hiddenRefs":[1,"refs/heads/a"],"soloRefs":3}'),
+      { hiddenRefs: ['refs/heads/a'], soloRefs: [] }
     )
   })
 })

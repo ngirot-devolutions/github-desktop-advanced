@@ -115,9 +115,10 @@ export class CommitGraphDetails extends React.Component<
           />
         </div>
         <CommitGraphSplitter
-          height={this.state.summaryHeight}
-          minimumHeight={MinimumSummaryHeight}
-          maximumHeight={maximumSummaryHeight}
+          orientation="horizontal"
+          size={this.state.summaryHeight}
+          minimumSize={MinimumSummaryHeight}
+          maximumSize={maximumSummaryHeight}
           label="Resize commit summary"
           onResize={this.onSummaryResize}
           onReset={this.onSummaryHeightReset}

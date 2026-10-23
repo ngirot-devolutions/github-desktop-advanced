@@ -3,22 +3,34 @@ import memoizeOne from 'memoize-one'
 import classNames from 'classnames'
 import { Repository } from '../../models/repository'
 import { Commit } from '../../models/commit'
-import { Branch } from '../../models/branch'
-import { Tip, TipState } from '../../models/tip'
 import { Account } from '../../models/account'
 import { GitHubRepository } from '../../models/github-repository'
 import { ImageDiffType } from '../../models/diff'
 import { CommittedFileChange } from '../../models/status'
-import { CommitGraphScope, ICommitGraphState } from '../../models/commit-graph'
+import {
+  CommitGraphScope,
+  ICommitGraphFilter,
+  ICommitGraphState,
+} from '../../models/commit-graph'
 import { ICommitSelection } from '../../lib/app-state'
 import { Emoji } from '../../lib/emoji'
 import { layoutCommitGraph } from '../../lib/commit-graph/layout'
-import { getCommitGraphRefs } from '../../lib/commit-graph/refs'
+import {
+  getCommitGraphRefs,
+  ICommitGraphRef,
+} from '../../lib/commit-graph/refs'
 import {
   DefaultCommitGraphDetailsWidth,
+  EmptyCommitGraphFilter,
+  getCommitGraphColumnWidth,
   getCommitGraphDetailsWidth,
+  setCommitGraphColumnWidth,
   setCommitGraphDetailsWidth,
 } from '../../lib/commit-graph/state'
+import {
+  ActiveBranchMaxAgeInDays,
+  shortRefName,
+} from '../../lib/commit-graph/revisions'
 import {
   CommitGraphColumnId,
   CommitGraphColumnTitles,
@@ -36,13 +48,47 @@ import { Resizable } from '../resizable'
 import { CommitGraphRow } from './commit-graph-row'
 import { CommitGraphDetails } from './commit-graph-details'
 import { CommitGraphDiff } from './commit-graph-diff'
+import { CommitGraphSplitter } from './commit-graph-splitter'
+import { Button } from '../lib/button'
+import { TooltippedContent } from '../lib/tooltipped-content'
 import {
   CommitGraphLaneWidth,
   CommitGraphRowHeight,
 } from './commit-graph-lanes'
 
-/** Lanes beyond this count are clipped to keep room for the descriptions. */
-const MaxVisibleLanes = 10
+/**
+ * Until the user resizes the graph column, it fits this many lanes at most to
+ * keep room for the descriptions.
+ */
+const MaxAutoVisibleLanes = 10
+
+/** The narrowest and widest the graph column can be resized to. */
+const MinimumGraphColumnWidth = 40
+const MaximumGraphColumnWidth = 1200
+
+/** The room always kept for the descriptions when widening the graph. */
+const MinimumDescriptionWidth = 200
+
+/** The width of the fixed size columns, as set in the stylesheet. */
+const FixedColumnWidths: Record<CommitGraphColumnId, number> = {
+  refs: 180,
+  graph: 0,
+  description: 0,
+  author: 130,
+  date: 100,
+  sha: 92,
+}
+
+const ScopeLabels: ReadonlyArray<[CommitGraphScope, string]> = [
+  ['all-branches', 'All branches'],
+  ['local-branches', 'Local branches'],
+  [
+    'active-branches',
+    `Active branches (last ${ActiveBranchMaxAgeInDays} days)`,
+  ],
+  ['current-and-default', 'Current and default branches'],
+  ['current-branch', 'Current branch'],
+]
 
 /** Load more commits when the last visible row is this close to the end. */
 const CloseToBottomThreshold = 50
@@ -58,9 +104,6 @@ interface ICommitGraphViewProps {
   readonly dispatcher: Dispatcher
   readonly graphState: ICommitGraphState
   readonly commitLookup: Map<string, Commit>
-  readonly branches: ReadonlyArray<Branch>
-  readonly localTags: Map<string, string> | null
-  readonly tip: Tip
   readonly commitSelection: ICommitSelection
   readonly emoji: Map<string, Emoji>
   readonly accounts: ReadonlyArray<Account>
@@ -95,6 +138,12 @@ interface ICommitGraphViewState {
 
   /** The column whose header is being dragged, if any. */
   readonly draggedColumn: CommitGraphColumnId | null
+
+  /**
+   * The width of the graph column chosen by the user, or null to fit the
+   * lanes automatically.
+   */
+  readonly graphColumnWidth: number | null
 }
 
 /**
@@ -129,7 +178,12 @@ export class CommitGraphView extends React.Component<
       isDiffOpen: false,
       columns: getCommitGraphColumnsPreference(),
       draggedColumn: null,
+      graphColumnWidth: getCommitGraphColumnWidth(),
     }
+  }
+
+  public componentDidMount() {
+    this.selectFirstCommitIfSelectionIsHidden()
   }
 
   public componentDidUpdate(prevProps: ICommitGraphViewProps) {
@@ -139,6 +193,30 @@ export class CommitGraphView extends React.Component<
     if (previous !== current && this.state.isDiffOpen) {
       this.setState({ isDiffOpen: false })
     }
+
+    this.selectFirstCommitIfSelectionIsHidden()
+  }
+
+  /**
+   * The selection is shared with the History tab, which may select a commit
+   * the graph doesn't show (e.g. when branches are soloed). Select the first
+   * commit of the graph instead, so that the details match the graph.
+   */
+  private selectFirstCommitIfSelectionIsHidden() {
+    const { commitSHAs, isLoading } = this.props.graphState
+    const { shas } = this.props.commitSelection
+
+    if (
+      isLoading ||
+      commitSHAs.length === 0 ||
+      (shas.length > 0 && shas.every(sha => commitSHAs.includes(sha)))
+    ) {
+      return
+    }
+
+    const { dispatcher, repository } = this.props
+    dispatcher.changeCommitSelection(repository, [commitSHAs[0]], true)
+    dispatcher.loadChangedFilesForCurrentSelection(repository)
   }
 
   public render() {
@@ -153,7 +231,10 @@ export class CommitGraphView extends React.Component<
           >
             {this.props.tabs}
           </div>
-          <div className="commit-graph-toolbar">{this.renderScopeSelect()}</div>
+          <div className="commit-graph-toolbar">
+            {this.renderFilterStatus()}
+            {this.renderScopeSelect()}
+          </div>
         </div>
         <div className="commit-graph-body">
           <div className="commit-graph-main">
@@ -261,10 +342,138 @@ export class CommitGraphView extends React.Component<
         value={this.props.graphState.scope}
         onChange={this.onScopeChanged}
       >
-        <option value="all-branches">All branches</option>
-        <option value="current-branch">Current branch</option>
+        {ScopeLabels.map(([scope, label]) => (
+          <option key={scope} value={scope}>
+            {label}
+          </option>
+        ))}
       </Select>
     )
+  }
+
+  private get filter(): ICommitGraphFilter {
+    return this.props.graphState.filter ?? EmptyCommitGraphFilter
+  }
+
+  /** Tells the user when branches are soloed or hidden, and how to undo it. */
+  private renderFilterStatus() {
+    const { soloRefs, hiddenRefs } = this.filter
+
+    if (soloRefs.length > 0) {
+      return (
+        <div className="commit-graph-filter-status">
+          <TooltippedContent
+            tagName="span"
+            className="commit-graph-filter-label"
+            tooltip={soloRefs.map(shortRefName).join(', ')}
+          >
+            Solo: {soloRefs.map(shortRefName).join(', ')}
+          </TooltippedContent>
+          <Button size="small" onClick={this.onExitSolo}>
+            Exit solo
+          </Button>
+        </div>
+      )
+    }
+
+    if (hiddenRefs.length > 0) {
+      return (
+        <div className="commit-graph-filter-status">
+          <TooltippedContent
+            tagName="span"
+            className="commit-graph-filter-label"
+            tooltip={hiddenRefs.map(shortRefName).join(', ')}
+          >
+            {hiddenRefs.length} hidden{' '}
+            {hiddenRefs.length === 1 ? 'branch' : 'branches'}
+          </TooltippedContent>
+          <Button size="small" onClick={this.onShowAllHidden}>
+            Show all
+          </Button>
+        </div>
+      )
+    }
+
+    return null
+  }
+
+  private setFilter(filter: ICommitGraphFilter) {
+    this.props.dispatcher.setCommitGraphFilter(this.props.repository, filter)
+  }
+
+  private onExitSolo = () => {
+    this.setFilter({ ...this.filter, soloRefs: [] })
+  }
+
+  private onShowAllHidden = () => {
+    this.setFilter({ ...this.filter, hiddenRefs: [] })
+  }
+
+  private onRefsContextMenu = (
+    refs: ReadonlyArray<ICommitGraphRef>,
+    event: React.MouseEvent<HTMLDivElement>
+  ) => {
+    event.preventDefault()
+
+    const { hiddenRefs, soloRefs } = this.filter
+    const isSoloActive = soloRefs.length > 0
+
+    const entries = refs
+      .flatMap(r => [
+        { name: r.name, ref: r.ref },
+        ...(r.upstream ? [r.upstream] : []),
+      ])
+      .filter(r => r.ref !== 'HEAD')
+
+    const refItems = entries.flatMap((r): ReadonlyArray<IMenuItem> => {
+      const isSoloed = soloRefs.includes(r.ref)
+      return [
+        {
+          label: `Hide ${r.name}`,
+          action: () =>
+            this.setFilter({
+              hiddenRefs: [...hiddenRefs.filter(h => h !== r.ref), r.ref],
+              soloRefs: soloRefs.filter(s => s !== r.ref),
+            }),
+        },
+        {
+          label: isSoloed
+            ? `Remove ${r.name} from solo`
+            : isSoloActive
+            ? `Add ${r.name} to solo`
+            : `Solo ${r.name}`,
+          action: () =>
+            this.setFilter({
+              hiddenRefs,
+              soloRefs: isSoloed
+                ? soloRefs.filter(s => s !== r.ref)
+                : [...soloRefs, r.ref],
+            }),
+        },
+        { type: 'separator' },
+      ]
+    })
+
+    const resetItems: ReadonlyArray<IMenuItem> = [
+      ...(isSoloActive
+        ? [{ label: 'Exit solo', action: this.onExitSolo }]
+        : []),
+      ...(hiddenRefs.length > 0
+        ? [
+            {
+              label: `Show all hidden branches (${hiddenRefs.length})`,
+              action: this.onShowAllHidden,
+            },
+          ]
+        : []),
+    ]
+
+    const items = [...refItems, ...resetItems]
+    if (items.length > 0 && items[items.length - 1].type === 'separator') {
+      items.pop()
+    }
+
+    showContextualMenu(items)
   }
 
   private renderColumnHeaders() {
@@ -296,8 +505,49 @@ export class CommitGraphView extends React.Component<
         onDragEnd={this.onColumnDragEnd}
       >
         {CommitGraphColumnTitles[column]}
+        {column === 'graph' && this.renderGraphHeaderExtras()}
       </div>
     )
+  }
+
+  private renderGraphHeaderExtras() {
+    const { hiddenLanes } = this
+
+    return (
+      <>
+        {hiddenLanes > 0 && (
+          <TooltippedContent
+            tagName="span"
+            className="commit-graph-hidden-lanes"
+            tooltip={`${hiddenLanes} ${
+              hiddenLanes === 1 ? 'lane is' : 'lanes are'
+            } hidden, drag the edge of the column to widen it`}
+          >
+            +{hiddenLanes}
+          </TooltippedContent>
+        )}
+        <CommitGraphSplitter
+          orientation="vertical"
+          size={this.graphWidth}
+          minimumSize={MinimumGraphColumnWidth}
+          maximumSize={this.maximumGraphWidth}
+          label="Resize the graph column"
+          onResize={this.onGraphColumnResize}
+          onReset={this.onGraphColumnReset}
+        />
+      </>
+    )
+  }
+
+  private onGraphColumnResize = (graphColumnWidth: number) => {
+    this.setState({ graphColumnWidth })
+    setCommitGraphColumnWidth(graphColumnWidth)
+  }
+
+  /** Go back to fitting the lanes automatically. */
+  private onGraphColumnReset = () => {
+    this.setState({ graphColumnWidth: null })
+    setCommitGraphColumnWidth(null)
   }
 
   private getColumnFromEvent(event: React.DragEvent<HTMLDivElement>) {
@@ -396,11 +646,11 @@ export class CommitGraphView extends React.Component<
         ariaLabel="Commit graph"
         invalidationProps={{
           commitSHAs,
-          branches: this.props.branches,
-          localTags: this.props.localTags,
-          tip: this.props.tip,
+          refs: this.props.graphState.refs,
           preferAbsoluteDates: this.props.preferAbsoluteDates,
           columns: this.state.columns,
+          graphColumnWidth: this.state.graphColumnWidth,
+          filter: this.props.graphState.filter,
         }}
       />
     )
@@ -429,6 +679,8 @@ export class CommitGraphView extends React.Component<
         accounts={this.props.accounts}
         emoji={this.props.emoji}
         preferAbsoluteDates={this.props.preferAbsoluteDates}
+        isGraphClipped={this.hiddenLanes > 0}
+        onRefsContextMenu={this.onRefsContextMenu}
       />
     )
   }
@@ -453,28 +705,48 @@ export class CommitGraphView extends React.Component<
   }
 
   private get refsBySha() {
-    return this.getRefs(
-      this.props.branches,
-      this.props.localTags,
-      this.props.tip
-    )
+    return this.getRefs(this.props.graphState.refs)
   }
 
   private get graphWidth() {
+    if (this.state.graphColumnWidth !== null) {
+      return Math.min(this.state.graphColumnWidth, this.maximumGraphWidth)
+    }
+
     const lanes = Math.min(
       Math.max(this.layout.columnCount, 1),
-      MaxVisibleLanes
+      MaxAutoVisibleLanes
     )
     return lanes * CommitGraphLaneWidth + CommitGraphLaneWidth / 2
   }
 
+  /**
+   * The widest the graph column can be without squeezing the description:
+   * the list width minus the other columns and room for the description.
+   */
+  private get maximumGraphWidth() {
+    const listWidth = window.innerWidth - this.state.detailsWidth
+    const otherColumns = this.state.columns
+      .filter(c => c !== 'graph' && c !== 'description')
+      .reduce((sum, c) => sum + FixedColumnWidths[c], 0)
+
+    return Math.max(
+      MinimumGraphColumnWidth,
+      Math.min(
+        MaximumGraphColumnWidth,
+        listWidth - otherColumns - MinimumDescriptionWidth
+      )
+    )
+  }
+
+  /** The number of lanes that don't fit in the graph column. */
+  private get hiddenLanes() {
+    const visible = Math.floor(this.graphWidth / CommitGraphLaneWidth)
+    return Math.max(0, this.layout.columnCount - visible)
+  }
+
   private get headSHA() {
-    const { tip } = this.props
-    return tip.kind === TipState.Valid
-      ? tip.branch.tip.sha
-      : tip.kind === TipState.Detached
-      ? tip.currentSha
-      : null
+    return this.props.graphState.refs?.headSha ?? null
   }
 
   private get selectedRows() {
@@ -486,12 +758,12 @@ export class CommitGraphView extends React.Component<
   }
 
   private onScopeChanged = (event: React.FormEvent<HTMLSelectElement>) => {
-    const scope: CommitGraphScope =
-      event.currentTarget.value === 'current-branch'
-        ? 'current-branch'
-        : 'all-branches'
+    const { value } = event.currentTarget
+    const scope = ScopeLabels.find(([s]) => s === value)?.[0]
 
-    this.props.dispatcher.setCommitGraphScope(this.props.repository, scope)
+    if (scope !== undefined) {
+      this.props.dispatcher.setCommitGraphScope(this.props.repository, scope)
+    }
   }
 
   private onSelectedRowChanged = (row: number) => {

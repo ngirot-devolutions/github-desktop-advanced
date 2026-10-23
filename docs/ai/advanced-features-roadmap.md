@@ -47,9 +47,13 @@ chaque commit, point pour les merges). Panneau de détails à droite (largeur
 redimensionnable) : résumé à hauteur fixe et redimensionnable au-dessus des
 fichiers, hauteurs et largeurs mémorisées.
 Un clic sur un fichier affiche son diff à la place du graphe, fermé par ✕, Échap
-ou en changeant de commit ; portée « All branches / Current branch » mémorisée,
-chargement par pages de 300 commits (`--date-order`), rafraîchissement
-uniquement quand les refs changent.
+ou en changeant de commit. Portée mémorisée : All / Local / Active (30 jours) /
+Current + default / Current branch. Refs lues par `git for-each-ref` (inclut les
+branches distantes suivies, que la liste de branches de Desktop exclut), passées
+à `git log --stdin` ; chargement par pages de 300 commits (`--date-order`),
+rafraîchissement uniquement quand les refs affichées changent. Branche locale et
+upstream synchronisés fusionnés en un label. Colonne graphe redimensionnable
+(double-clic : largeur auto), badge « +N » et fondu quand des lanes sont coupées.
 
 - Données : `app/src/lib/git/commit-graph.ts`, `GitStore.loadCommitGraphBatch`,
   `AppStore._setCommitGraphScope` / `_loadNextCommitGraphBatch`,
@@ -61,9 +65,9 @@ uniquement quand les refs changent.
 
 Reste à faire :
 
-- Largeur des colonnes redimensionnable, notamment le graphe (limité à 10
-  lanes visibles : sur un gros dépôt, les tags de branches de release jamais
-  mergées ouvrent beaucoup de lanes).
+- Largeur redimensionnable des autres colonnes.
+- Compacter les lanes (ramener les lanes vers la gauche quand une colonne se
+  libère) pour réduire la largeur du graphe sur les gros dépôts.
 - Sélection multiple, navigation clavier vers parent / enfant.
 - Les actions sur le graphe relèvent d'ADV-02, la recherche et le filtrage
   d'ADV-22.
@@ -151,7 +155,7 @@ Pistes techniques : `app/src/lib/git/remote.ts` (`addRemote`, `removeRemote`,
 | ADV-19 | Palette de commandes (Ctrl+P) | todo | réutiliser `MenuEvent` (`app/src/main-process/menu/menu-event.ts`) |
 | ADV-20 | Recherche floue de fichiers dans un commit ou les changements | todo | `app/src/lib/fuzzy-find.ts` existe |
 | ADV-21 | Éditeur de fichiers intégré | todo | CodeMirror déjà présent |
-| ADV-22 | Rechercher, filtrer, masquer ou mettre en évidence des branches dans le graphe | todo | dépend de ADV-01 |
+| ADV-22 | Rechercher, filtrer, masquer ou mettre en évidence des branches dans le graphe | partiel | masquer / solo par clic droit sur la colonne Branch / Tag, mémorisé par dépôt (`lib/commit-graph/revisions.ts`) ; reste la recherche |
 | ADV-23 | Avatars et couleurs par auteur dans le graphe | todo | dépend de ADV-01, `app/src/ui/lib/avatar.tsx` |
 | ADV-24 | Diff mot à mot, mise en évidence du code déplacé, options de whitespace | partiel | `app/src/ui/diff/` |
 | ADV-25 | Interface LFS : lock/unlock, fichiers suivis, patterns | partiel | `app/src/lib/git/lfs.ts`, `app/src/ui/lfs/` |

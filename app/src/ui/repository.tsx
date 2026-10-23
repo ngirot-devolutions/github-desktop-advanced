@@ -669,9 +669,6 @@ export class RepositoryView extends React.Component<
         dispatcher={this.props.dispatcher}
         graphState={state.commitGraphState}
         commitLookup={state.commitLookup}
-        branches={state.branchesState.allBranches}
-        localTags={state.localTags}
-        tip={state.branchesState.tip}
         commitSelection={state.commitSelection}
         emoji={this.props.emoji}
         accounts={this.props.accounts}

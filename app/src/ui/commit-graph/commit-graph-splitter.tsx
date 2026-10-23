@@ -1,43 +1,53 @@
 import * as React from 'react'
+import classNames from 'classnames'
 import { clamp } from '../../lib/clamp'
 
 /** The number of pixels the keyboard arrows move the splitter by. */
 const KeyboardStep = 10
 
 interface ICommitGraphSplitterProps {
-  /** The current height of the pane above the splitter. */
-  readonly height: number
-  readonly minimumHeight: number
-  readonly maximumHeight: number
+  /**
+   * 'horizontal' : a bar resizing the height of the pane above it.
+   * 'vertical'   : a handle resizing the width of the element on its left.
+   */
+  readonly orientation: 'horizontal' | 'vertical'
 
-  /** Describes the pane being resized to screen reader users. */
+  /** The current size (height or width) of the resized element. */
+  readonly size: number
+  readonly minimumSize: number
+  readonly maximumSize: number
+
+  /** Describes the element being resized to screen reader users. */
   readonly label: string
 
-  readonly onResize: (height: number) => void
+  readonly onResize: (size: number) => void
 
   /** Called when the user double clicks the splitter. */
   readonly onReset: () => void
 }
 
 /**
- * A horizontal bar resizing the height of the pane above it, by dragging it
- * with the mouse or with the up and down arrows when focused.
+ * A splitter resizing an element by dragging it with the mouse, or with the
+ * arrow keys when focused.
  */
 export class CommitGraphSplitter extends React.Component<ICommitGraphSplitterProps> {
-  private startY: number | null = null
-  private startHeight: number | null = null
+  private start: number | null = null
+  private startSize: number | null = null
 
   public componentWillUnmount() {
     this.stopDragging()
   }
 
   public render() {
+    const keys =
+      this.props.orientation === 'horizontal' ? 'up and down' : 'left and right'
+
     return (
       <button
         // Prevent form submission with this button
         type="button"
-        className="commit-graph-splitter"
-        aria-label={`${this.props.label}, use the up and down arrow keys`}
+        className={classNames('commit-graph-splitter', this.props.orientation)}
+        aria-label={`${this.props.label}, use the ${keys} arrow keys`}
         onMouseDown={this.onMouseDown}
         onDoubleClick={this.props.onReset}
         onKeyDown={this.onKeyDown}
@@ -45,39 +55,53 @@ export class CommitGraphSplitter extends React.Component<ICommitGraphSplitterPro
     )
   }
 
-  private resize(height: number) {
-    const { minimumHeight, maximumHeight } = this.props
-    this.props.onResize(clamp(height, minimumHeight, maximumHeight))
+  private resize(size: number) {
+    const { minimumSize, maximumSize } = this.props
+    this.props.onResize(clamp(size, minimumSize, maximumSize))
+  }
+
+  private position(event: MouseEvent | React.MouseEvent) {
+    return this.props.orientation === 'horizontal'
+      ? event.clientY
+      : event.clientX
   }
 
   private onMouseDown = (event: React.MouseEvent<HTMLButtonElement>) => {
-    this.startY = event.clientY
-    this.startHeight = this.props.height
+    this.start = this.position(event)
+    this.startSize = this.props.size
     document.addEventListener('mousemove', this.onMouseMove)
     document.addEventListener('mouseup', this.stopDragging)
+
+    // Don't let a draggable parent (e.g. a column header) start dragging.
     event.preventDefault()
+    event.stopPropagation()
   }
 
   private onMouseMove = (event: MouseEvent) => {
-    if (this.startY !== null && this.startHeight !== null) {
-      this.resize(this.startHeight + event.clientY - this.startY)
+    if (this.start !== null && this.startSize !== null) {
+      this.resize(this.startSize + this.position(event) - this.start)
       event.preventDefault()
     }
   }
 
   private stopDragging = () => {
-    this.startY = null
-    this.startHeight = null
+    this.start = null
+    this.startSize = null
     document.removeEventListener('mousemove', this.onMouseMove)
     document.removeEventListener('mouseup', this.stopDragging)
   }
 
   private onKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (event.key === 'ArrowUp') {
-      this.resize(this.props.height - KeyboardStep)
+    const [decrease, increase] =
+      this.props.orientation === 'horizontal'
+        ? ['ArrowUp', 'ArrowDown']
+        : ['ArrowLeft', 'ArrowRight']
+
+    if (event.key === decrease) {
+      this.resize(this.props.size - KeyboardStep)
       event.preventDefault()
-    } else if (event.key === 'ArrowDown') {
-      this.resize(this.props.height + KeyboardStep)
+    } else if (event.key === increase) {
+      this.resize(this.props.size + KeyboardStep)
       event.preventDefault()
     }
   }

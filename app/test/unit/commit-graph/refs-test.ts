@@ -1,50 +1,97 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert'
-import { Branch, BranchType } from '../../../src/models/branch'
-import { Tip, TipState } from '../../../src/models/tip'
+import {
+  ICommitGraphRefInfo,
+  ICommitGraphRefs,
+} from '../../../src/models/commit-graph'
 import { getCommitGraphRefs } from '../../../src/lib/commit-graph/refs'
 
-const local = (name: string, sha: string) =>
-  new Branch(name, null, { sha }, BranchType.Local, `refs/heads/${name}`)
+const info = (
+  ref: string,
+  sha: string,
+  upstream: string | null = null
+): ICommitGraphRefInfo => ({ ref, sha, date: null, upstream })
 
-const remote = (name: string, sha: string) =>
-  new Branch(name, null, { sha }, BranchType.Remote, `refs/remotes/${name}`)
-
-const onBranch = (branch: Branch): Tip => ({ kind: TipState.Valid, branch })
+const onMain = (
+  refs: ReadonlyArray<ICommitGraphRefInfo>
+): ICommitGraphRefs => ({
+  headSha: 'aaa',
+  headRef: 'refs/heads/main',
+  refs,
+})
 
 describe('getCommitGraphRefs', () => {
+  it('returns no labels before the refs are loaded', () => {
+    assert.strictEqual(getCommitGraphRefs(null).size, 0)
+  })
+
   it('groups branches and tags by commit, current branch first', () => {
-    const main = local('main', 'aaa')
-    const refs = getCommitGraphRefs(
-      [remote('origin/main', 'aaa'), local('feature', 'bbb'), main],
-      new Map([['v1.0', 'aaa']]),
-      onBranch(main)
+    const labels = getCommitGraphRefs(
+      onMain([
+        info('refs/tags/v1.0', 'aaa'),
+        info('refs/remotes/origin/main', 'aaa'),
+        info('refs/heads/feature', 'bbb'),
+        info('refs/heads/main', 'aaa'),
+      ])
     )
 
-    assert.deepStrictEqual(refs.get('aaa'), [
-      { name: 'main', kind: 'head' },
-      { name: 'origin/main', kind: 'remote' },
-      { name: 'v1.0', kind: 'tag' },
+    assert.deepStrictEqual(labels.get('aaa'), [
+      { name: 'main', kind: 'head', ref: 'refs/heads/main' },
+      { name: 'origin/main', kind: 'remote', ref: 'refs/remotes/origin/main' },
+      { name: 'v1.0', kind: 'tag', ref: 'refs/tags/v1.0' },
     ])
-    assert.deepStrictEqual(refs.get('bbb'), [
-      { name: 'feature', kind: 'local' },
+    assert.deepStrictEqual(labels.get('bbb'), [
+      { name: 'feature', kind: 'local', ref: 'refs/heads/feature' },
+    ])
+  })
+
+  it('merges a local branch with its upstream when they are in sync', () => {
+    const labels = getCommitGraphRefs(
+      onMain([
+        info('refs/heads/main', 'aaa', 'refs/remotes/origin/main'),
+        info('refs/remotes/origin/main', 'aaa'),
+        info('refs/heads/feature', 'bbb', 'refs/remotes/origin/feature'),
+        info('refs/remotes/origin/feature', 'ccc'),
+      ])
+    )
+
+    assert.deepStrictEqual(labels.get('aaa'), [
+      {
+        name: 'main',
+        kind: 'head',
+        ref: 'refs/heads/main',
+        upstream: { name: 'origin/main', ref: 'refs/remotes/origin/main' },
+      },
+    ])
+    assert.deepStrictEqual(labels.get('bbb'), [
+      { name: 'feature', kind: 'local', ref: 'refs/heads/feature' },
+    ])
+    assert.deepStrictEqual(labels.get('ccc'), [
+      {
+        name: 'origin/feature',
+        kind: 'remote',
+        ref: 'refs/remotes/origin/feature',
+      },
     ])
   })
 
   it('labels a detached HEAD', () => {
-    const refs = getCommitGraphRefs([], null, {
-      kind: TipState.Detached,
-      currentSha: 'ccc',
+    const labels = getCommitGraphRefs({
+      headSha: 'ccc',
+      headRef: null,
+      refs: [],
     })
 
-    assert.deepStrictEqual(refs.get('ccc'), [{ name: 'HEAD', kind: 'head' }])
+    assert.deepStrictEqual(labels.get('ccc'), [
+      { name: 'HEAD', kind: 'head', ref: 'HEAD' },
+    ])
   })
 
-  it('ignores symbolic remote HEAD refs', () => {
-    const refs = getCommitGraphRefs([remote('origin/HEAD', 'aaa')], null, {
-      kind: TipState.Unknown,
-    })
+  it('leaves out the remotes used internally for forks', () => {
+    const labels = getCommitGraphRefs(
+      onMain([info('refs/remotes/github-desktop-someone/main', 'aaa')])
+    )
 
-    assert.strictEqual(refs.size, 0)
+    assert.strictEqual(labels.size, 0)
   })
 })

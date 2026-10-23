@@ -180,12 +180,19 @@ import {
   launchExternalEditor,
 } from '../editors'
 import { assertNever, fatalError, forceUnwrap } from '../fatal-error'
-import { CommitGraphScope, ICommitGraphState } from '../../models/commit-graph'
+import {
+  CommitGraphScope,
+  ICommitGraphFilter,
+  ICommitGraphState,
+} from '../../models/commit-graph'
 import {
   CommitGraphBatchSize,
+  getCommitGraphFilterPreference,
   getCommitGraphRefsSignature,
+  setCommitGraphFilterPreference,
   setCommitGraphScopePreference,
 } from '../commit-graph/state'
+import { getCommitGraphRevisions } from '../commit-graph/revisions'
 
 import { formatCommitMessage } from '../format-commit-message'
 import {
@@ -2019,37 +2026,59 @@ export class AppStore extends TypedBaseStore<IAppState> {
   }
 
   /** This shouldn't be called directly. See `Dispatcher`. */
+  public async _setCommitGraphFilter(
+    repository: Repository,
+    filter: ICommitGraphFilter
+  ): Promise<void> {
+    setCommitGraphFilterPreference(repository.id, filter)
+    this.updateCommitGraphState(repository, { filter, commitSHAs: [] })
+    this.emitUpdate()
+    await this.refreshCommitGraphSection(repository, true)
+  }
+
+  /** This shouldn't be called directly. See `Dispatcher`. */
   public async _loadNextCommitGraphBatch(repository: Repository) {
     const { commitGraphState } = this.repositoryStateCache.get(repository)
-    const { isLoading, hasMore, scope, commitSHAs } = commitGraphState
+    const { isLoading, hasMore, revisions, commitSHAs } = commitGraphState
 
-    if (isLoading || !hasMore) {
+    if (isLoading || !hasMore || revisions.length === 0) {
       return
     }
 
-    await this.loadCommitGraph(repository, scope, commitSHAs.length, {
+    await this.loadCommitGraph(repository, revisions, commitSHAs.length, {
       commitSHAs,
       refsSignature: commitGraphState.refsSignature,
     })
   }
 
   /**
-   * Reload the commit graph if the refs it depends on changed since it was
+   * Reload the commit graph if the refs it is drawn from changed since it was
    * last loaded, or unconditionally when `force` is true.
    */
   private async refreshCommitGraphSection(
     repository: Repository,
     force: boolean = false
   ): Promise<void> {
-    const { commitGraphState, branchesState, localTags } =
+    const gitStore = this.gitStoreCache.get(repository)
+    const refs = await gitStore.getCommitGraphRefs()
+    if (refs === undefined) {
+      return
+    }
+
+    const { commitGraphState, branchesState } =
       this.repositoryStateCache.get(repository)
     const { scope, commitSHAs } = commitGraphState
-    const refsSignature = getCommitGraphRefsSignature(
+    const filter =
+      commitGraphState.filter ?? getCommitGraphFilterPreference(repository.id)
+
+    const revisions = getCommitGraphRevisions({
       scope,
-      branchesState.tip,
-      branchesState.allBranches,
-      localTags
-    )
+      filter,
+      refs,
+      defaultBranchRef: branchesState.defaultBranch?.ref ?? null,
+      now: new Date(),
+    })
+    const refsSignature = getCommitGraphRefsSignature(revisions, refs)
 
     if (
       !force &&
@@ -2059,10 +2088,12 @@ export class AppStore extends TypedBaseStore<IAppState> {
       return
     }
 
+    this.updateCommitGraphState(repository, { filter, refs, revisions })
+
     // Reload at least as many commits as currently displayed so that the
     // scroll position is preserved.
     const limit = Math.max(commitSHAs.length, CommitGraphBatchSize)
-    await this.loadCommitGraph(repository, scope, 0, {
+    await this.loadCommitGraph(repository, revisions, 0, {
       commitSHAs: [],
       refsSignature,
       limit,
@@ -2077,7 +2108,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
    */
   private async loadCommitGraph(
     repository: Repository,
-    scope: CommitGraphScope,
+    revisions: ReadonlyArray<string>,
     skip: number,
     base: {
       readonly commitSHAs: ReadonlyArray<string>
@@ -2093,7 +2124,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     const limit = base.limit ?? CommitGraphBatchSize
     const gitStore = this.gitStoreCache.get(repository)
-    const newSHAs = await gitStore.loadCommitGraphBatch(scope, limit, skip)
+    const newSHAs = await gitStore.loadCommitGraphBatch(revisions, limit, skip)
 
     if (this.commitGraphRequestIds.get(repository.hash) !== requestId) {
       return

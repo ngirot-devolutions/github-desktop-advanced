@@ -132,7 +132,7 @@ import { ICustomIntegration } from '../../lib/custom-integration'
 import { isAbsolute } from 'path'
 import { CLIAction } from '../../lib/cli-action'
 import { BypassReasonType } from '../secret-scanning/bypass-push-protection-dialog'
-import { CommitGraphScope } from '../../models/commit-graph'
+import { CommitGraphScope, ICommitGraphFilter } from '../../models/commit-graph'
 import {
   IConflictResolutionProgress,
   IFileResolution,
@@ -261,6 +261,14 @@ export class Dispatcher {
     scope: CommitGraphScope
   ): Promise<void> {
     return this.appStore._setCommitGraphScope(repository, scope)
+  }
+
+  /** Hide or solo branches in the commit graph and reload it. */
+  public setCommitGraphFilter(
+    repository: Repository,
+    filter: ICommitGraphFilter
+  ): Promise<void> {
+    return this.appStore._setCommitGraphFilter(repository, filter)
   }
 
   /** Load the changed files for the current history selection. */

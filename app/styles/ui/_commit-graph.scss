@@ -55,7 +55,24 @@ body.theme-dark {
       flex: 1 1 auto;
       align-items: center;
       justify-content: flex-end;
+      gap: var(--spacing);
       padding: 0 var(--spacing);
+      min-width: 0;
+    }
+
+    .commit-graph-filter-status {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-half);
+      min-width: 0;
+
+      .commit-graph-filter-label {
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        color: var(--text-secondary-color);
+      }
     }
 
     .commit-graph-scope {
@@ -201,22 +218,43 @@ body.theme-dark {
   }
 
   .commit-graph-splitter {
-    flex: 0 0 auto;
-    width: 100%;
-    height: 5px;
     padding: 0;
-    border-left: none;
-    border-right: none;
     border-radius: 0;
-    cursor: ns-resize;
-    background: var(--box-alt-background-color);
-    border-top: var(--base-border);
-    border-bottom: var(--base-border);
+    outline: none;
 
-    &:hover,
-    &:focus {
-      background: var(--box-border-color);
-      outline: none;
+    &.horizontal {
+      flex: 0 0 auto;
+      width: 100%;
+      height: 5px;
+      border-left: none;
+      border-right: none;
+      cursor: ns-resize;
+      background: var(--box-alt-background-color);
+      border-top: var(--base-border);
+      border-bottom: var(--base-border);
+
+      &:hover,
+      &:focus {
+        background: var(--box-border-color);
+      }
+    }
+
+    // The handle on the right edge of the graph column header.
+    &.vertical {
+      position: absolute;
+      top: 0;
+      right: -3px;
+      width: 7px;
+      height: 100%;
+      border: none;
+      background: transparent;
+      cursor: ew-resize;
+      z-index: 1;
+
+      &:hover,
+      &:focus {
+        background: var(--box-border-color);
+      }
     }
   }
 
@@ -257,6 +295,21 @@ body.theme-dark {
       &.dragged {
         opacity: 0.4;
       }
+
+      // The resize handle of the graph column overflows its header.
+      &.graph {
+        overflow: visible;
+        gap: var(--spacing-half);
+      }
+    }
+
+    .commit-graph-hidden-lanes {
+      padding: 0 var(--spacing-half);
+      border-radius: 8px;
+      background: var(--box-alt-background-color);
+      border: var(--base-border);
+      font-weight: normal;
+      line-height: 14px;
     }
   }
 
@@ -272,6 +325,11 @@ body.theme-dark {
       position: relative;
       padding: 0;
       overflow: hidden;
+
+      // Fade the lanes out on the right when some of them don't fit.
+      &.clipped .commit-graph-lanes {
+        mask-image: linear-gradient(to right, black calc(100% - 16px), transparent);
+      }
       height: 100%;
       display: flex;
       align-items: center;
@@ -418,6 +476,14 @@ body.theme-dark {
       min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+
+    .commit-graph-ref-upstream {
+      flex: 0 0 auto;
+      width: 11px;
+      height: 11px;
+      margin-left: 2px;
+      opacity: 0.8;
     }
   }
 }

@@ -37,6 +37,15 @@ interface ICommitGraphRowProps {
   readonly accounts: ReadonlyArray<Account>
   readonly emoji: Map<string, Emoji>
   readonly preferAbsoluteDates: boolean
+
+  /** Whether some lanes are clipped because the graph column is too narrow. */
+  readonly isGraphClipped: boolean
+
+  /** Called when the user right clicks the branches and tags of the row. */
+  readonly onRefsContextMenu: (
+    refs: ReadonlyArray<ICommitGraphRef>,
+    event: React.MouseEvent<HTMLDivElement>
+  ) => void
 }
 
 /** A single commit in the commit graph, its cells in the order of `columns`. */
@@ -55,7 +64,11 @@ export class CommitGraphRow extends React.PureComponent<ICommitGraphRowProps> {
     switch (column) {
       case 'refs':
         return (
-          <div key={column} className="commit-graph-cell refs">
+          <div
+            key={column}
+            className="commit-graph-cell refs"
+            onContextMenu={this.onRefsContextMenu}
+          >
             {this.renderRefs()}
           </div>
         )
@@ -63,7 +76,9 @@ export class CommitGraphRow extends React.PureComponent<ICommitGraphRowProps> {
         return (
           <div
             key={column}
-            className="commit-graph-cell graph"
+            className={classNames('commit-graph-cell graph', {
+              clipped: this.props.isGraphClipped,
+            })}
             style={{ width: this.props.graphWidth }}
           >
             <CommitGraphLanes
@@ -100,6 +115,12 @@ export class CommitGraphRow extends React.PureComponent<ICommitGraphRowProps> {
         )
       default:
         return assertNever(column, `Unknown column: ${column}`)
+    }
+  }
+
+  private onRefsContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (this.props.refs.length > 0) {
+      this.props.onRefsContextMenu(this.props.refs, event)
     }
   }
 
@@ -168,6 +189,13 @@ export class CommitGraphRow extends React.PureComponent<ICommitGraphRowProps> {
           >
             {ref.kind === 'tag' && <Octicon symbol={octicons.tag} />}
             <span className="commit-graph-ref-name">{ref.name}</span>
+            {ref.upstream !== undefined && (
+              <Octicon
+                className="commit-graph-ref-upstream"
+                symbol={octicons.cloud}
+                title={`In sync with ${ref.upstream.name}`}
+              />
+            )}
           </span>
         ))}
         {hidden.length > 0 && (

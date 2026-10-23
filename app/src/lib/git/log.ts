@@ -122,7 +122,9 @@ export async function getCommits(
   revisionRange?: string,
   limit?: number,
   skip?: number,
-  additionalArgs: ReadonlyArray<string> = []
+  additionalArgs: ReadonlyArray<string> = [],
+  /** Input for Git, e.g. revisions when `additionalArgs` contains `--stdin`. */
+  stdin?: string
 ): Promise<ReadonlyArray<Commit>> {
   const { formatArgs, parse } = createLogParser({
     sha: '%H', // SHA
@@ -172,6 +174,7 @@ export async function getCommits(
   const result = await git(args, repository.path, 'getCommits', {
     successExitCodes: new Set([0, 128]),
     encoding: 'buffer',
+    stdin,
   })
 
   // if the repository has an unborn HEAD, return an empty history of commits

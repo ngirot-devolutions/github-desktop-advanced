@@ -1,11 +1,16 @@
-import { Branch } from '../../models/branch'
-import { CommitGraphScope, ICommitGraphState } from '../../models/commit-graph'
-import { Tip, TipState } from '../../models/tip'
+import {
+  CommitGraphScope,
+  ICommitGraphFilter,
+  ICommitGraphRefs,
+  ICommitGraphState,
+} from '../../models/commit-graph'
 import { getNumber, setNumber } from '../local-storage'
 
 const commitGraphScopeKey = 'commit-graph-scope'
 const commitGraphDetailsWidthKey = 'commit-graph-details-width'
 const commitGraphSummaryHeightKey = 'commit-graph-summary-height'
+const commitGraphGraphWidthKey = 'commit-graph-graph-width'
+const commitGraphFilterKeyPrefix = 'commit-graph-filter-'
 
 /** The default height of the commit summary above the changed files. */
 export const DefaultCommitGraphSummaryHeight = 180
@@ -16,12 +21,25 @@ export const DefaultCommitGraphDetailsWidth = 460
 /** The number of commits loaded in the graph per batch. */
 export const CommitGraphBatchSize = 300
 
+/** A filter that neither hides nor soloes anything. */
+export const EmptyCommitGraphFilter: ICommitGraphFilter = {
+  hiddenRefs: [],
+  soloRefs: [],
+}
+
+const commitGraphScopes: ReadonlyArray<CommitGraphScope> = [
+  'all-branches',
+  'local-branches',
+  'active-branches',
+  'current-and-default',
+  'current-branch',
+]
+
 /** Read the scope last chosen by the user, defaulting to all branches. */
 export function getCommitGraphScopePreference(): CommitGraphScope {
   try {
-    return localStorage.getItem(commitGraphScopeKey) === 'current-branch'
-      ? 'current-branch'
-      : 'all-branches'
+    const value = localStorage.getItem(commitGraphScopeKey)
+    return commitGraphScopes.find(s => s === value) ?? 'all-branches'
   } catch {
     return 'all-branches'
   }
@@ -31,6 +49,58 @@ export function getCommitGraphScopePreference(): CommitGraphScope {
 export function setCommitGraphScopePreference(scope: CommitGraphScope) {
   try {
     localStorage.setItem(commitGraphScopeKey, scope)
+  } catch {
+    // Not being able to persist the preference is not worth bothering the user.
+  }
+}
+
+/** Parse a stored filter, ignoring anything that isn't a list of strings. */
+export function parseCommitGraphFilter(
+  value: string | null
+): ICommitGraphFilter {
+  if (value === null) {
+    return EmptyCommitGraphFilter
+  }
+
+  try {
+    const parsed = JSON.parse(value)
+    const strings = (v: unknown): ReadonlyArray<string> =>
+      Array.isArray(v)
+        ? v.filter((s): s is string => typeof s === 'string')
+        : []
+
+    return {
+      hiddenRefs: strings(parsed?.hiddenRefs),
+      soloRefs: strings(parsed?.soloRefs),
+    }
+  } catch {
+    return EmptyCommitGraphFilter
+  }
+}
+
+/** Read the branches hidden or soloed in the given repository. */
+export function getCommitGraphFilterPreference(
+  repositoryId: number
+): ICommitGraphFilter {
+  try {
+    return parseCommitGraphFilter(
+      localStorage.getItem(`${commitGraphFilterKeyPrefix}${repositoryId}`)
+    )
+  } catch {
+    return EmptyCommitGraphFilter
+  }
+}
+
+/** Remember the branches hidden or soloed in the given repository. */
+export function setCommitGraphFilterPreference(
+  repositoryId: number,
+  filter: ICommitGraphFilter
+) {
+  try {
+    localStorage.setItem(
+      `${commitGraphFilterKeyPrefix}${repositoryId}`,
+      JSON.stringify(filter)
+    )
   } catch {
     // Not being able to persist the preference is not worth bothering the user.
   }
@@ -56,9 +126,33 @@ export function setCommitGraphSummaryHeight(height: number) {
   setNumber(commitGraphSummaryHeightKey, height)
 }
 
+/**
+ * Read the width of the graph column chosen by the user, or null when it
+ * should fit the lanes automatically.
+ */
+export function getCommitGraphColumnWidth(): number | null {
+  return getNumber(commitGraphGraphWidthKey) ?? null
+}
+
+/** Remember the width of the graph column, or null to fit the lanes. */
+export function setCommitGraphColumnWidth(width: number | null) {
+  if (width === null) {
+    try {
+      localStorage.removeItem(commitGraphGraphWidthKey)
+    } catch {
+      // Not being able to persist the preference is not worth bothering the user.
+    }
+  } else {
+    setNumber(commitGraphGraphWidthKey, width)
+  }
+}
+
 export function getInitialCommitGraphState(): ICommitGraphState {
   return {
     scope: getCommitGraphScopePreference(),
+    filter: null,
+    refs: null,
+    revisions: [],
     commitSHAs: [],
     isLoading: false,
     hasMore: true,
@@ -67,31 +161,20 @@ export function getInitialCommitGraphState(): ICommitGraphState {
 }
 
 /**
- * Compute a signature of the refs the graph depends on.
+ * Compute a signature of the refs the graph is drawn from.
  *
- * Two signatures are equal when HEAD, the branches and the tags point at the
- * same commits, in which case the graph doesn't need to be reloaded.
+ * Two signatures are equal when the same refs point at the same commits, in
+ * which case the graph doesn't need to be reloaded.
  */
 export function getCommitGraphRefsSignature(
-  scope: CommitGraphScope,
-  tip: Tip,
-  branches: ReadonlyArray<Branch>,
-  tags: ReadonlyMap<string, string> | null
+  revisions: ReadonlyArray<string>,
+  refs: ICommitGraphRefs
 ): string {
-  const head =
-    tip.kind === TipState.Valid
-      ? `${tip.branch.name}@${tip.branch.tip.sha}`
-      : tip.kind === TipState.Detached
-      ? tip.currentSha
-      : tip.kind
+  const shas = new Map(refs.refs.map(r => [r.ref, r.sha]))
+  const head = `${refs.headRef ?? 'detached'}@${refs.headSha ?? 'unborn'}`
 
-  const refs =
-    scope === 'all-branches'
-      ? [
-          ...branches.map(b => `${b.ref}@${b.tip.sha}`),
-          ...[...(tags ?? [])].map(([name, sha]) => `tag:${name}@${sha}`),
-        ].sort()
-      : []
-
-  return [scope, head, ...refs].join('\n')
+  return [
+    head,
+    ...revisions.map(r => `${r}@${r === 'HEAD' ? head : shas.get(r)}`).sort(),
+  ].join('\n')
 }

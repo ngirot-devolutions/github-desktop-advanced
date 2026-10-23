@@ -99,8 +99,7 @@ import { getDefaultBranch } from '../helpers/default-branch'
 import { rm, stat } from 'fs/promises'
 import { findForkedRemotesToPrune } from './helpers/find-forked-remotes-to-prune'
 import { findDefaultBranch } from '../find-default-branch'
-import { CommitGraphScope } from '../../models/commit-graph'
-import { getCommitGraphCommits } from '../git/commit-graph'
+import { getCommitGraphCommits, getCommitGraphRefs } from '../git/commit-graph'
 
 /** The number of commits to load from history per batch. */
 const CommitBatchSize = 100
@@ -242,12 +241,12 @@ export class GitStore extends BaseStore {
 
   /** Load a batch of commits to display in the commit graph. */
   public async loadCommitGraphBatch(
-    scope: CommitGraphScope,
+    revisions: ReadonlyArray<string>,
     limit: number,
     skip: number
   ) {
     const commits = await this.performFailableOperation(() =>
-      getCommitGraphCommits(this.repository, scope, limit, skip)
+      getCommitGraphCommits(this.repository, revisions, limit, skip)
     )
 
     if (!commits) {
@@ -256,6 +255,13 @@ export class GitStore extends BaseStore {
 
     this.storeCommits(commits)
     return commits.map(c => c.sha)
+  }
+
+  /** HEAD and every branch and tag, as drawn by the commit graph. */
+  public async getCommitGraphRefs() {
+    return this.performFailableOperation(() =>
+      getCommitGraphRefs(this.repository)
+    )
   }
 
   public async refreshTags() {
